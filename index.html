@@ -430,83 +430,94 @@
             return isEmail || isPhone;
         }
 
-        function handleRegister() {
-            let user = document.getElementById('reg-user').value.trim();
-            let pass = document.getElementById('reg-pass').value.trim();
-            let passConfirm = document.getElementById('reg-pass-confirm').value.trim();
+        // --- 1. REGISTRATION FUNCTION ---
+function handleRegister() {
+    let phoneOrEmail = document.getElementById('reg-user').value.trim();
+    let pass = document.getElementById('reg-pass').value.trim();
 
-            if(!validateUserIdentifier(user)) {
-                alert('Invalid input! Please enter a valid email or a 10-digit phone number starting with 07.');
-                return;
-            }
+    if (!phoneOrEmail || !pass) {
+        alert('Please fill in all required fields.');
+        return;
+    }
 
-            if(!pass || !/^[a-zA-Z0-9]+$/.test(pass)) {
-                alert('Password must be alphanumeric.');
-                return;
-            }
+    // Get existing users from localStorage
+    let users = JSON.parse(localStorage.getItem('sr_users') || '[]');
 
-            if(pass !== passConfirm) {
-                alert('Passwords do not match!');
-                return;
-            }
+    // Check if user already exists
+    if (users.some(u => u.phone === phoneOrEmail || u.email === phoneOrEmail)) {
+        alert('Account already exists with this phone or email!');
+        return;
+    }
 
-            registeredUserStore = { user, pass };
-            currentUserPhone = user;
-            
-            if(!usersDB[currentUserPhone]) {
-                usersDB[currentUserPhone] = {
-                    balance: 3000,
-                    totalDep: 0,
-                    totalWith: 0,
-                    totalEarn: 3000,
-                    userProducts: [],
-                    displayName: user,
-                    avatarUrl: ''
-                };
-                txs.unshift({type: 'Welcome Bonus', amount: 3000, status: 'Approved', phone: user});
-            }
+    // Create new user object with welcome bonus & default data
+    let newUser = {
+        phone: phoneOrEmail,
+        email: phoneOrEmail.includes('@') ? phoneOrEmail : '',
+        pass: pass,
+        balance: 3000, 
+        totalDep: 0,
+        totalWith: 0,
+        totalEarn: 3000,
+        userProducts: [],
+        displayName: phoneOrEmail,
+        avatarUrl: ''
+    };
 
-            syncProfileUI();
-            document.getElementById('refLink').value = `https://sr-investments.com/reg?code=${user}`;
-            alert('🎉 Registration successful! You have received a UGX 3,000 welcome bonus.');
-            launchApp();
-        }
+    // Save to users array & set active session
+    users.push(newUser);
+    localStorage.setItem('sr_users', JSON.stringify(users));
+    localStorage.setItem('sr_current_user', JSON.stringify(newUser));
 
-        function handleLogin() {
-            let user = document.getElementById('log-user').value.trim();
-            let pass = document.getElementById('log-pass').value.trim();
+    currentUserPhone = phoneOrEmail;
+    
+    // Initialize usersDB reference if used elsewhere in your app
+    if(typeof usersDB !== 'undefined') {
+        usersDB[currentUserPhone] = newUser;
+    }
 
-            if(!registeredUserStore) {
-                if(!validateUserIdentifier(user) || pass.length === 0) {
-                    alert('Please register first or enter valid credentials.');
-                    return;
-                }
-                registeredUserStore = { user, pass };
-            } else {
-                if(user !== registeredUserStore.user || pass !== registeredUserStore.pass) {
-                    alert('Incorrect phone/email or password!');
-                    return;
-                }
-            }
-            currentUserPhone = user;
+    alert('Registration successful! Welcome bonus of UGX 3,000 added.');
+    
+    syncProfileUI();
+    launchApp();
+}
 
-            if(!usersDB[currentUserPhone]) {
-                usersDB[currentUserPhone] = {
-                    balance: 3000,
-                    totalDep: 0,
-                    totalWith: 0,
-                    totalEarn: 3000,
-                    userProducts: [],
-                    displayName: user,
-                    avatarUrl: ''
-                };
-                txs.unshift({type: 'Welcome Bonus', amount: 3000, status: 'Approved', phone: user});
-            }
+// --- 2. LOGIN FUNCTION ---
+function handleLogin() {
+    let userIdentifier = document.getElementById('log-user').value.trim();
+    let pass = document.getElementById('log-pass').value.trim();
 
-            syncProfileUI();
-            document.getElementById('refLink').value = `https://sr-investments.com/reg?code=${user}`;
-            launchApp();
-        }
+    if (!userIdentifier || !pass) {
+        alert('Please fill in both fields.');
+        return;
+    }
+
+    // Retrieve the stored users list from localStorage
+    let users = JSON.parse(localStorage.getItem('sr_users') || '[]');
+    let foundUser = users.find(u => u.phone === userIdentifier || u.email === userIdentifier);
+
+    if (!foundUser) {
+        alert('Account not found. Please register first.');
+        return;
+    }
+
+    // Strict password match check
+    if (foundUser.pass !== pass && foundUser.password !== pass) {
+        alert('Incorrect password! Please try again.');
+        return;
+    }
+
+    // Set active session
+    localStorage.setItem('sr_current_user', JSON.stringify(foundUser));
+    currentUserPhone = foundUser.phone || foundUser.email;
+    
+    if(typeof usersDB !== 'undefined' && !usersDB[currentUserPhone]) {
+        usersDB[currentUserPhone] = foundUser;
+    }
+
+    syncProfileUI();
+    launchApp();
+    alert('Login successful!');
+}
 
         function syncProfileUI() {
             let uData = getCurrentUserData();
