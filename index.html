@@ -183,7 +183,8 @@
                 <input type="password" id="reg-pass-confirm" class="input" placeholder="Confirm password">
                 
                 <label style="font-size:11px; color:var(--muted);">Invitation Code / Ref Link</label>
-                <input type="text" id="reg-ref" class="input" value="941295" placeholder="Referral code">
+                <input type="text" id="reg-ref" class="input" placeholder="Referral Phone (Optional)">
+                
 
                 <button class="btn" style="width:100%; margin-top:10px;" onclick="handleRegister()">Create Account</button>
             </div>
@@ -453,13 +454,17 @@
                 total_dep: 0,
                 total_with: 0,
                 total_earn: 3000,
-                display_name: phoneOrEmail,
-                avatar_url: '',
-                created_at: new Date().toISOString()
-            };
+                    display_name: phoneOrEmail,
+    avatar_url: "",
+    created_at: new Date().toISOString(),   // <-- Make sure there is a comma here!
+    referred_by: localStorage.getItem('sr_referred_by') || null
+};
 
-            await setDoc(userRef, newUser);
-            currentUser = newUser;
+await setDoc(userRef, newUser);
+localStorage.removeItem('sr_referred_by');   // <-- Clean up temporary storage here too
+
+
+          currentUser = newUser;
             currentUser.id = phoneOrEmail;
 
             alert('Registration successful! Welcome bonus of UGX 3,000 added.');
@@ -529,13 +534,54 @@
                 }
             });
         }
+              async function getReferralCount(userPhone) {
+    try {
+        const usersRef = collection(db, "users");
+        const q = query(usersRef, where("referred_by", "==", userPhone));
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.size;
+    } catch (error) {
+        console.error("Error fetching referrals: ", error);
+        return 0;
+    }
+}
 
-        function syncProfileUI() {
+           async function syncProfileUI() {
             if(!currentUser) return;
             document.getElementById('profilePhoneDisplay').innerText = currentUser.identifier;
             document.getElementById('profileDisplayName').innerText = currentUser.display_name || currentUser.identifier;
             document.getElementById('settingNameInput').value = currentUser.display_name || currentUser.identifier;
-            
+                // Generate and set the unique referral link
+    if (currentUser && currentUser.id) {
+        const baseUrl = window.location.origin + window.location.pathname;
+        const referralLink = `${baseUrl}?ref=${currentUser.id}`;
+        
+        const refInput = document.getElementById('referralLinkInput');
+        if (refInput) {
+            refInput.value = referralLink;
+        }
+        
+        const copyBtn = document.getElementById('copyReferralBtn');
+        if (copyBtn) {
+            copyBtn.onclick = function() {
+                navigator.clipboard.writeText(referralLink).then(() => {
+                    alert('Referral link copied to clipboard!');
+                }).catch(err => {
+                    console.error('Failed to copy: ', err);
+                });
+            };
+        }
+    // Fetch and display total referrals
+    if (currentUser && currentUser.identifier) {
+        const referralCount = await getReferralCount(currentUser.identifier);
+        const refCountElement = document.getElementById('totalReferralsCount');
+        if (refCountElement) {
+            refCountElement.innerText = referralCount;
+        }
+    }
+    
+    }
+    
             let avatarImg = document.getElementById('profileAvatarImg');
             if(currentUser.avatar_url) {
                 avatarImg.src = currentUser.avatar_url;
@@ -543,6 +589,7 @@
                 avatarImg.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'></path><circle cx='12' cy='7' r='4'></circle></svg>";
             }
         }
+        
 
         window.handleAvatarUpload = async function(event) {
             let file = event.target.files[0];
@@ -1142,6 +1189,14 @@
             requestAnimationFrame(draw);
         }
         draw();
+        window.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const refParam = urlParams.get('ref');
+    if (refParam) {
+        localStorage.setItem('sr_referred_by', refParam);
+    }
+});
+
     </script>
 </body>
 </html>
