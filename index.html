@@ -270,6 +270,10 @@
                         <li><strong>Level 3 (Invited by L2):</strong> Get <strong>3%</strong> of their first purchased product.</li>
                     </ul>
                 </div>
+                <div style="margin-top: 15px; font-weight: bold; font-size: 13px;">Your Invited Members</div>
+                 <div id="referred-members-list" style="margin-top: 8px; max-height: 200px; overflow-y: auto;">
+                 <!-- Members will load here -->
+              </div>
             </div>
         </div>
 
@@ -557,6 +561,49 @@ localStorage.removeItem('sr_referred_by');   // <-- Clean up temporary storage h
         return 0;
     }
 }
+         async function loadReferralList() {
+    if (!currentUser) return;
+    
+    // Make sure you add this container element in your HTML inside the 'referearn-view'
+    const refListContainer = document.getElementById('referred-members-list');
+    if (!refListContainer) return;
+
+    refListContainer.innerHTML = '<div style="color:var(--muted); font-size:12px;">Loading team members...</div>';
+
+    try {
+        const refId = currentUser.id || currentUser.identifier;
+        const q = query(collection(db, "users"), where("referred_by", "==", refId));
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+            refListContainer.innerHTML = '<div style="color:var(--muted); font-size:12px;">No invited members yet. Share your link to start earning!</div>';
+            return;
+        }
+
+        let html = '';
+        querySnapshot.forEach((docSnap) => {
+            let member = docSnap.data();
+            let maskedPhone = member.identifier ? member.identifier.substring(0, 3) + '****' + member.identifier.slice(-3) : 'User';
+            let statusBadge = member.first_purchase_made ? '<span style="color:var(--success); font-weight:bold;">Active</span>' : '<span style="color:var(--warning); font-size:11px;">Pending</span>';
+            let dateJoined = member.created_at ? new Date(member.created_at).toLocaleDateString() : 'N/A';
+
+            html += `
+                <div style="background:var(--card-bg, #1e1e1e); padding:10px; border-radius:8px; margin-bottom:8px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-weight:bold; color:var(--text);">${maskedPhone}</div>
+                        <div style="color:var(--muted); font-size:10px;">Joined: ${dateJoined}</div>
+                    </div>
+                    <div>${statusBadge}</div>
+                </div>
+            `;
+        });
+
+    refListContainer.innerHTML = html;
+    } catch (err) {
+        console.error("Error loading referrals:", err);
+        refListContainer.innerHTML = '<div style="color:var(--error, red); font-size:12px;">Failed to load referral list.</div>';
+    }
+}
 
            async function syncProfileUI() {
             if(!currentUser) return;
@@ -593,7 +640,8 @@ if (refInput) {
             refCountElement.innerText = referralCount;
         }
     }
-    
+        loadReferralList();
+        
     }
     
             let avatarImg = document.getElementById('profileAvatarImg');
