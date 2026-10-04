@@ -557,10 +557,11 @@ localStorage.removeItem('sr_referred_by');   // <-- Clean up temporary storage h
     const refId = currentUser.id || currentUser.identifier;
     const referralLink = `${baseUrl}?ref=${refId}`;
     
-        const refInput = document.getElementById('referralLinkInput');
-        if (refInput) {
-            refInput.value = referralLink;
-        }
+        const refInput = document.getElementById('refLink');
+if (refInput) {
+    refInput.value = referralLink;
+}
+
         
         const copyBtn = document.getElementById('copyReferralBtn');
         if (copyBtn) {
@@ -663,22 +664,22 @@ localStorage.removeItem('sr_referred_by');   // <-- Clean up temporary storage h
             alert('Social links updated successfully for all users!');
         }
               async function launchApp() {
-            document.getElementById('auth-container').style.display = 'none';
-            document.getElementById('main-app').style.display = 'block';
-            await fetchUserData();
-            updateDashboard();
-            
-            // Populate referral link on app launch
-            if (currentUser && (currentUser.id || currentUser.identifier)) {
-                const baseUrl = window.location.origin + window.location.pathname;
-                const refId = currentUser.id || currentUser.identifier;
-                const refInput = document.getElementById('referralLinkInput');
-                if (refInput) {
-                    refInput.value = `${baseUrl}?ref=${refId}`;
-                }
-            }
+    document.getElementById('auth-container').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
+    await fetchUserData();
+    updateDashboard();
+    
+    // Populate referral link on app launch
+    if (currentUser && (currentUser.id || currentUser.identifier)) {
+        const baseUrl = window.location.origin + window.location.pathname;
+        const refId = currentUser.id || currentUser.identifier;
+        const refInput = document.getElementById('refLink');
+        if (refInput) {
+            refInput.value = `${baseUrl}?ref=${refId}`;
         }
-  
+    }
+}
+
         
 
         window.closeModal = function() {
