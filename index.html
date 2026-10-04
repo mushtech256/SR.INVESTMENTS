@@ -408,6 +408,18 @@
             whatsapp: "https://chat.whatsapp.com/J8WonMtmqgW6ljsV5fI3l5?s=cl&p=a&mlu=4&ilr=4",
             telegram: "https://t.me/+s63xqIYPEdo5ZGI0"
         };
+        // Capture referral parameter from URL if present
+const urlParams = new URLSearchParams(window.location.search);
+const refParam = urlParams.get('ref');
+if (refParam) {
+    localStorage.setItem('sr_referred_by', refParam);
+    // Optional: Pre-fill the registration referral input if visible
+    window.addEventListener('DOMContentLoaded', () => {
+        const regRefInput = document.getElementById('reg-ref');
+        if (regRefInput) regRefInput.value = refParam;
+    });
+}
+
 
         window.switchAuthTab = function(tab) {
             document.getElementById('register-form').classList.remove('active');
@@ -895,19 +907,81 @@ if (refInput) {
             alert('Action completed successfully!');
         }
 
-        window.investPlan = async function(price, dailyReturn) {
+                window.investPlan = async function(price, dailyReturn) {
             if(currentUser.balance < price) {
                 if(confirm('Insufficient balance to invest directly. Would you like to deposit funds first? (Minimum deposit is UGX 15,000)')) {
                     openDepositModal();
                 }
                 return;
             }
+
+            // Check if this is the user's first purchase
+            let isFirstPurchase = !currentUser.first_purchase_made;
+
             currentUser.balance -= price;
+            currentUser.first_purchase_made = true;
             
             let userRef = doc(db, "users", currentUser.id);
             await updateDoc(userRef, {
-                balance: currentUser.balance
+                balance: currentUser.balance,
+                first_purchase_made: true
             });
+
+            // --- AUTOMATED MULTI-TIER REFERRAL COMMISSIONS ---
+            if (isFirstPurchase && currentUser.referred_by) {
+                try {
+                    // Level 1 Referrer (10%)
+                    let l1RefId = currentUser.referred_by;
+                    let l1RefDocRef = doc(db, "users", l1RefId);
+                    let l1Snap = await getDoc(l1RefDocRef);
+
+                    if (l1Snap.exists()) {
+                        let l1Data = l1Snap.data();
+                        let l1Bonus = price * 0.10;
+                        
+                        await updateDoc(l1RefDocRef, {
+                            balance: (l1Data.balance || 0) + l1Bonus,
+                            total_earn: (l1Data.total_earn || 0) + l1Bonus
+                        });
+
+                        // Level 2 Referrer (5%)
+                        if (l1Data.referred_by) {
+                            let l2RefId = l1Data.referred_by;
+                            let l2RefDocRef = doc(db, "users", l2RefId);
+                            let l2Snap = await getDoc(l2RefDocRef);
+
+                            if (l2Snap.exists()) {
+                                let l2Data = l2Snap.data();
+                                let l2Bonus = price * 0.05;
+
+                                await updateDoc(l2RefDocRef, {
+                                    balance: (l2Data.balance || 0) + l2Bonus,
+                                    total_earn: (l2Data.total_earn || 0) + l2Bonus
+                                });
+
+                                // Level 3 Referrer (3%)
+                                if (l2Data.referred_by) {
+                                    let l3RefId = l2Data.referred_by;
+                                    let l3RefDocRef = doc(db, "users", l3RefId);
+                                    let l3Snap = await getDoc(l3RefDocRef);
+
+                                    if (l3Snap.exists()) {
+                                        let l3Data = l3Snap.data();
+                                        let l3Bonus = price * 0.03;
+
+                                        await updateDoc(l3RefDocRef, {
+                                            balance: (l3Data.balance || 0) + l3Bonus,
+                                            total_earn: (l3Data.total_earn || 0) + l3Bonus
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error crediting referral tiers:", err);
+                }
+            }
 
             let newProduct = {
                 user_id: currentUser.id,
@@ -937,20 +1011,30 @@ if (refInput) {
             alert(`🎉 Successfully invested UGX ${price.toLocaleString()}! Daily 10% Return: UGX ${dailyReturn.toLocaleString()}`);
         }
 
-        window.triggerCheckIn = async function() {
-            currentUser.balance += 500;
-            currentUser.total_earn += 500;
+                window.triggerCheckIn = async function() {
+            const todayStr = new Date().toDateString(); // Gets current date string (e.g., "Mon Oct 05 2026")
+
+            // Check if user already claimed today
+            if (currentUser.last_check_in === todayStr) {
+                alert('⏳ You have already claimed your daily check-in bonus today. Come back tomorrow!');
+                return;
+            }
+
+            currentUser.balance += 200;
+            currentUser.total_earn = (currentUser.total_earn || 0) + 200;
+            currentUser.last_check_in = todayStr;
 
             let userRef = doc(db, "users", currentUser.id);
             await updateDoc(userRef, {
                 balance: currentUser.balance,
-                total_earn: currentUser.total_earn
+                total_earn: currentUser.total_earn,
+                last_check_in: todayStr
             });
 
             let newTx = {
                 user_id: currentUser.id,
                 type: 'Daily Check-in Bonus',
-                amount: 500,
+                amount: 200,
                 phone: currentUser.identifier,
                 status: 'Approved',
                 created_at: new Date().toISOString()
@@ -959,9 +1043,9 @@ if (refInput) {
 
             await fetchUserData();
             updateDashboard();
-            alert('🎉 Check-in successful! You earned UGX 500.');
+            alert('🎉 Check-in successful! You earned UGX 200.');
         }
-
+        
         window.triggerLogout = function() {
             if(confirm('Are you sure you want to log out?')) {
                 currentUser = null;
