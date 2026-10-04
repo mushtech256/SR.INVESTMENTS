@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SR.Investments</title>
-    <!-- Include Supabase JS SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --primary: #d81b60;
@@ -305,7 +303,7 @@
 
                 <!-- PROFILE SETTINGS MENU -->
                 <div style="background:#0d1424; padding:15px; border-radius:8px; border:1px solid var(--border); margin-bottom:15px; text-align:left;">
-                    <div style="color:var(--primary); font-weight:bold; font-size:13px; margin-bottom:10px;">⚙️️ Profile Settings</div>
+                    <div style="color:var(--primary); font-weight:bold; font-size:13px; margin-bottom:10px;">⚙️ Profile Settings</div>
                     
                     <label style="font-size:11px; color:var(--muted);">Profile Picture (Choose from storage)</label>
                     <input type="file" id="avatarFileInput" class="input" accept="image/*" style="font-size:11px; padding:6px;" onchange="handleAvatarUpload(event)">
@@ -345,14 +343,14 @@
                         <label style="font-size:10px; color:var(--muted);">Telegram Link</label>
                         <input type="text" id="adminTelegramInput" class="input" style="font-size:11px; margin:4px 0 8px 0;" placeholder="https://t.me/...">
 
-                        button class="btn" style="width:100%; font-size:11px; background:#334155;" onclick="saveAdminSocialLinks()">Save Links</button>
+                        <button class="btn" style="width:100%; font-size:11px; background:#334155;" onclick="saveAdminSocialLinks()">Save Links</button>
                     </div>
 
-                     <div style="font-size:13px; font-weight:bold; color:white; margin-bottom:6px;">Pending Deposits</div>
+                       <div style="font-size:13px; font-weight:bold; color:white; margin-bottom:6px;">Pending Deposits</div>
                     <div id="adminPendingDeposits" style="margin-bottom:15px; font-size:12px; color:var(--muted);">No pending deposits.</div>
 
                     <div style="font-size:13px; font-weight:bold; color:white; margin-bottom:6px;">Pending Withdrawals</div>
-                    <div id="adminPendingWithdrawals" style="font-size:12px; color:var(--muted);">No pending withdrawals.</div>
+                    <div id="adminPendingWithdrawals" style="margin-bottom:15px; font-size:12px; color:var(--muted);">No pending withdrawals.</div>
                 </div>
             </div>
         </div>
@@ -383,32 +381,26 @@
         </nav>
     </div>
 
-    <script>
-                        // --- SUPABASE INITIALIZATION ---
-        const SUPABASE_URL = 'https://tjmvxyxibcdqtyaoybyhi.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqbXZ5eGliY2RxdHlhb3lieWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNjU3NDgsImV4cCI6MjEwNjY0MTc0OH0.HOKItumJu2COWuxm3FrB6ujVHBWK3bY0QE7-xl1K6XU';
-        
-        let supabaseClient = null;
-        try {
-            if (window.supabase) {
-                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            } else {
-                console.error("Supabase SDK script not loaded yet.");
-            }
-        } catch (err) {
-            console.error("Error initializing Supabase client:", err);
-        }
-        
-        let currentUser = null;
-        let userData = {
-            balance: 3000,
-            totalDep: 0,
-            totalWith: 0,
-            totalEarn: 3000,
-            userProducts: [],
-            displayName: 'User Name',
-            avatarUrl: ''
+    <!-- FIREBASE MODULE SCRIPTS -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, query, where, orderBy, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // --- FIREBASE CONFIGURATION (Integrated from your Firebase Console) ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDfRjk36a68GQ9dzcxOKSGn9u...",
+            authDomain: "sr-investments-18e74.firebaseapp.com",
+            projectId: "sr-investments-18e74",
+            storageBucket: "sr-investments-18e74.firebasestorage.app",
+            messagingSenderId: "781262590520",
+            appId: "1:781262590520:web:d6d49a6002f..."
         };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        let currentUser = null;
+        let userProducts = [];
         let txs = [];
         
         let appConfig = {
@@ -416,7 +408,7 @@
             telegram: "https://t.me/+s63xqIYPEdo5ZGI0"
         };
 
-        function switchAuthTab(tab) {
+        window.switchAuthTab = function(tab) {
             document.getElementById('register-form').classList.remove('active');
             document.getElementById('login-form').classList.remove('active');
             document.getElementById('tab-reg-btn').classList.remove('active');
@@ -431,64 +423,52 @@
             }
         }
 
-        // --- 1. SUPABASE REGISTRATION ---
-        async function handleRegister() {
+        // --- 1. REGISTRATION FUNCTION (FIREBASE FIRESTORE) ---
+        window.handleRegister = async function() {
             let phoneOrEmail = document.getElementById('reg-user').value.trim();
             let pass = document.getElementById('reg-pass').value.trim();
-            let passConfirm = document.getElementById('reg-pass-confirm').value.trim();
+            let confirmPass = document.getElementById('reg-pass-confirm').value.trim();
 
             if (!phoneOrEmail || !pass) {
                 alert('Please fill in all required fields.');
                 return;
             }
-            if (pass !== passConfirm) {
+            if (pass !== confirmPass) {
                 alert('Passwords do not match.');
                 return;
             }
 
-            // Map phone/email to a pseudo-email if phone number is used (Supabase Auth requires email format)
-            let authEmail = phoneOrEmail.includes('@') ? phoneOrEmail : `${phoneOrEmail}@sr-investments.ug`;
+            let userRef = doc(db, "users", phoneOrEmail);
+            let userSnap = await getDoc(userRef);
 
-            const { data, error } = await supabaseClient.auth.signUp({
-                email: authEmail,
-                password: pass,
-                options: {
-                    data: { phone: phoneOrEmail }
-                }
-            });
-
-            if (error) {
-                alert('Registration failed: ' + error.message);
+            if (userSnap.exists()) {
+                alert('Account already exists with this phone or email!');
                 return;
             }
 
-            currentUser = data.user;
-            
-            // Initialize user profile record in database table 'profiles'
-            const initialProfile = {
-                id: currentUser.id,
-                phone: phoneOrEmail,
+            let newUser = {
+                identifier: phoneOrEmail,
+                pass: pass,
                 balance: 3000,
                 total_dep: 0,
                 total_with: 0,
                 total_earn: 3000,
                 display_name: phoneOrEmail,
                 avatar_url: '',
-                user_products: []
+                created_at: new Date().toISOString()
             };
 
-            const { error: profileError } = await supabaseClient.from('profiles').insert([initialProfile]);
-            if (profileError) {
-                console.error('Error creating profile record:', profileError.message);
-            }
+            await setDoc(userRef, newUser);
+            currentUser = newUser;
+            currentUser.id = phoneOrEmail;
 
             alert('Registration successful! Welcome bonus of UGX 3,000 added.');
-            loadUserDataFromSupabase();
+            syncProfileUI();
             launchApp();
         }
 
-        // --- 2. SUPABASE LOGIN ---
-        async function handleLogin() {
+        // --- 2. LOGIN FUNCTION (FIREBASE FIRESTORE) ---
+        window.handleLogin = async function() {
             let userIdentifier = document.getElementById('log-user').value.trim();
             let pass = document.getElementById('log-pass').value.trim();
 
@@ -497,130 +477,106 @@
                 return;
             }
 
-            let authEmail = userIdentifier.includes('@') ? userIdentifier : `${userIdentifier}@sr-investments.ug`;
+            let userRef = doc(db, "users", userIdentifier);
+            let userSnap = await getDoc(userRef);
 
-            const { data, error } = await supabaseClient.auth.signInWithPassword({
-                email: authEmail,
-                password: pass
-            });
-
-            if (error) {
-                alert('Login failed: ' + error.message);
+            if (!userSnap.exists()) {
+                alert('Account not found. Please register first.');
                 return;
             }
 
-            currentUser = data.user;
-            await loadUserDataFromSupabase();
+            let foundUser = userSnap.data();
+            if (foundUser.pass !== pass) {
+                alert('Incorrect password! Please try again.');
+                return;
+            }
+
+            currentUser = foundUser;
+            currentUser.id = userIdentifier;
+
+            syncProfileUI();
+            await fetchUserData();
             launchApp();
             alert('Login successful!');
         }
 
-        async function loadUserDataFromSupabase() {
+        async function fetchUserData() {
             if (!currentUser) return;
             
-            const { data, error } = await supabaseClient
-                .from('profiles')
-                .select('*')
-                .eq('id', currentUser.id)
-                .single();
-
-            if (data) {
-                userData = {
-                    balance: data.balance || 0,
-                    totalDep: data.total_dep || 0,
-                    totalWith: data.total_with || 0,
-                    totalEarn: data.total_earn || 0,
-                    userProducts: data.user_products || [],
-                    displayName: data.display_name || 'User Name',
-                    avatarUrl: data.avatar_url || ''
-                };
+            // Fetch fresh user data
+            let userRef = doc(db, "users", currentUser.id);
+            let userSnap = await getDoc(userRef);
+            if(userSnap.exists()) {
+                currentUser = { id: userSnap.id, ...userSnap.data() };
             }
 
-                        // Fetch transactions
-            const { data: txData } = await supabaseClient
-                .from('transactions')
-                .select('*')
-                .eq('user_id', currentUser.id)
-                .order('created_at', { ascending: false });
-                
+            // Fetch user products
+            userProducts = [];
+            let prodsQuery = query(collection(db, "user_products"), where("user_id", "==", currentUser.id));
+            let prodsSnap = await getDocs(prodsQuery);
+            prodsSnap.forEach(docSnap => {
+                userProducts.push({ id: docSnap.id, ...docSnap.data() });
+            });
 
-            if (txData) {
-                txs = txData.map(t => ({
-                    id: t.id,
-                    type: t.type,
-                    amount: t.amount,
-                    phone: t.phone,
-                    status: t.status,
-                    name: t.name,
-                    network: t.network,
-                    charge: t.charge,
-                    sendAmount: t.send_amount
-                }));
-            }
-
-            syncProfileUI();
-            updateDashboard();
-        }
-
-        async function saveUserDataToSupabase() {
-            if (!currentUser) return;
-            await supabaseClient.from('profiles').update({
-                balance: userData.balance,
-                total_dep: userData.totalDep,
-                total_with: userData.totalWith,
-                total_earn: userData.totalEarn,
-                user_products: userData.userProducts,
-                display_name: userData.displayName,
-                avatar_url: userData.avatarUrl
-            }).eq('id', currentUser.id);
+            // Fetch transactions
+            txs = [];
+            let txsQuery = query(collection(db, "transactions"), orderBy("created_at", "desc"));
+            let txsSnap = await getDocs(txsQuery);
+            txsSnap.forEach(docSnap => {
+                let tData = docSnap.data();
+                if(tData.user_id === currentUser.id || currentUser.id === '0759537511') {
+                    txs.push({ id: docSnap.id, ...tData });
+                }
+            });
         }
 
         function syncProfileUI() {
-            let phoneDisplay = currentUser?.user_metadata?.phone || currentUser?.email || '-';
-            document.getElementById('profilePhoneDisplay').innerText = phoneDisplay;
-            document.getElementById('profileDisplayName').innerText = userData.displayName;
-            document.getElementById('settingNameInput').value = userData.displayName;
+            if(!currentUser) return;
+            document.getElementById('profilePhoneDisplay').innerText = currentUser.identifier;
+            document.getElementById('profileDisplayName').innerText = currentUser.display_name || currentUser.identifier;
+            document.getElementById('settingNameInput').value = currentUser.display_name || currentUser.identifier;
             
             let avatarImg = document.getElementById('profileAvatarImg');
-            if(userData.avatarUrl) {
-                avatarImg.src = userData.avatarUrl;
+            if(currentUser.avatar_url) {
+                avatarImg.src = currentUser.avatar_url;
             } else {
                 avatarImg.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'></path><circle cx='12' cy='7' r='4'></circle></svg>";
             }
-
-            let phoneVal = currentUser?.user_metadata?.phone || '';
-            if(phoneVal) {
-                document.getElementById('refLink').value = `https://sr-investments.ug/ref?code=${phoneVal}`;
-            }
         }
 
-        async function handleAvatarUpload(event) {
+        window.handleAvatarUpload = async function(event) {
             let file = event.target.files[0];
-            if(!file) return;
+            if(!file || !currentUser) return;
 
             let reader = new FileReader();
             reader.onload = async function(e) {
-                userData.avatarUrl = e.target.result;
+                let base64Img = e.target.result;
+                currentUser.avatar_url = base64Img;
+                
+                let userRef = doc(db, "users", currentUser.id);
+                await updateDoc(userRef, { avatar_url: base64Img });
+
                 syncProfileUI();
-                await saveUserDataToSupabase();
                 alert('Profile picture updated successfully!');
             };
             reader.readAsDataURL(file);
         }
 
-        async function saveProfileName() {
+        window.saveProfileName = async function() {
             let newName = document.getElementById('settingNameInput').value.trim();
-            if(!newName) {
+            if(!newName || !currentUser) {
                 alert('Display name cannot be empty.');
                 return;
             }
-            userData.displayName = newName;
+            currentUser.display_name = newName;
+            let userRef = doc(db, "users", currentUser.id);
+            await updateDoc(userRef, { display_name: newName });
+
             syncProfileUI();
-            await saveUserDataToSupabase();
             alert('Display name updated successfully!');
         }
 
-        async function changePassword() {
+        window.changePassword = async function() {
             let oldPass = document.getElementById('oldPassInput').value.trim();
             let newPass = document.getElementById('newPassInput').value.trim();
 
@@ -632,19 +588,21 @@
                 alert('New password must be alphanumeric.');
                 return;
             }
-
-            const { error } = await supabaseClient.auth.updateUser({ password: newPass });
-            if (error) {
-                alert('Password update failed: ' + error.message);
+            if(oldPass !== currentUser.pass) {
+                alert('Incorrect current password!');
                 return;
             }
+
+            currentUser.pass = newPass;
+            let userRef = doc(db, "users", currentUser.id);
+            await updateDoc(userRef, { pass: newPass });
 
             document.getElementById('oldPassInput').value = '';
             document.getElementById('newPassInput').value = '';
             alert('Password changed successfully!');
         }
 
-        function saveAdminSocialLinks() {
+        window.saveAdminSocialLinks = function() {
             let newWa = document.getElementById('adminWhatsappInput').value.trim();
             let newTg = document.getElementById('adminTelegramInput').value.trim();
 
@@ -656,18 +614,18 @@
 
             alert('Social links updated successfully for all users!');
         }
-
-        function launchApp() {
+        async function launchApp() {
             document.getElementById('auth-container').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
+            await fetchUserData();
             updateDashboard();
         }
 
-        function closeModal() {
+        window.closeModal = function() {
             document.getElementById('modal').classList.remove('active');
         }
 
-        function openModal(title) {
+        window.openModal = function(title) {
             document.getElementById('modal-body-content').innerHTML = `
                 <h3 style="color:var(--primary); font-size:14px; margin-bottom:10px;">${title}</h3>
                 <input type="number" id="amtInput" class="input" placeholder="Enter amount (UGX)">
@@ -677,12 +635,11 @@
             document.getElementById('modal').classList.add('active');
         }
 
-        function openDepositModal() {
-            let defaultPhone = currentUser?.user_metadata?.phone || '';
+        window.openDepositModal = function() {
             document.getElementById('modal-body-content').innerHTML = `
                 <h3 style="color:var(--primary); font-size:14px; margin-bottom:10px;">Deposit / Invest</h3>
                 <label style="font-size:11px; color:var(--muted);">Your Phone Number</label>
-                <input type="text" id="dep-phone" class="input" placeholder="07XXXXXXXX" value="${defaultPhone}">
+                <input type="text" id="dep-phone" class="input" placeholder="07XXXXXXXX" value="${currentUser.identifier.startsWith('07') ? currentUser.identifier : ''}">
                 <label style="font-size:11px; color:var(--muted);">Amount (Min UGX 15,000)</label>
                 <input type="number" id="dep-amt" class="input" placeholder="Enter amount (UGX)">
                 <button class="btn" style="width:100%; background:var(--success); margin-top:5px;" onclick="processDepositStep1()">Confirm</button>
@@ -691,7 +648,7 @@
             document.getElementById('modal').classList.add('active');
         }
 
-        function processDepositStep1() {
+        window.processDepositStep1 = function() {
             let phone = document.getElementById('dep-phone').value.trim();
             let amt = parseFloat(document.getElementById('dep-amt').value);
 
@@ -728,12 +685,12 @@
             `;
         }
 
-        function copyTargetNum() {
+        window.copyTargetNum = function() {
             navigator.clipboard.writeText("0760434771");
             alert("Payment number copied to clipboard!");
         }
 
-        async function finalizeDeposit() {
+        window.finalizeDeposit = async function() {
             let sentPhone = document.getElementById('sent-phone').value.trim();
             let sentAmt = parseFloat(document.getElementById('sent-amt').value);
 
@@ -751,38 +708,25 @@
                 type: 'Deposit',
                 amount: sentAmt,
                 phone: sentPhone,
-                status: 'Pending'
+                status: 'Pending',
+                created_at: new Date().toISOString()
             };
 
-            const { data, error } = await supabaseClient.from('transactions').insert([newTx]).select();
-            if(error) {
-                alert('Error submitting deposit: ' + error.message);
-                return;
-            }
-
-            if(data) {
-                txs.unshift({
-                    id: data[0].id,
-                    type: 'Deposit',
-                    amount: sentAmt,
-                    phone: sentPhone,
-                    status: 'Pending'
-                });
-            }
+            await addDoc(collection(db, "transactions"), newTx);
+            await fetchUserData();
             updateDashboard();
             closeModal();
             alert('Deposit submitted. Kindly wait for Admin approval.');
         }
 
-        function openWithdrawModal() {
-            let defaultPhone = currentUser?.user_metadata?.phone || '';
+        window.openWithdrawModal = function() {
             document.getElementById('modal-body-content').innerHTML = `
                 <h3 style="color:var(--primary); font-size:14px; margin-bottom:10px;">Withdraw Funds</h3>
                 <label style="font-size:11px; color:var(--muted);">Full Name</label>
                 <input type="text" id="w-name" class="input" placeholder="Full Name">
 
                 <label style="font-size:11px; color:var(--muted);">Phone Number</label>
-                <input type="text" id="w-phone" class="input" placeholder="07XXXXXXXX" value="${defaultPhone}">
+                <input type="text" id="w-phone" class="input" placeholder="07XXXXXXXX" value="${currentUser.identifier.startsWith('07') ? currentUser.identifier : ''}">
 
                 <label style="font-size:11px; color:var(--muted);">Network Provider</label>
                 <select id="w-network" class="input">
@@ -805,7 +749,7 @@
             document.getElementById('modal').classList.add('active');
         }
 
-        function calcWithdrawCharge() {
+        window.calcWithdrawCharge = function() {
             let val = parseFloat(document.getElementById('w-amt').value) || 0;
             let charge = val * 0.10;
             let totalDeduction = val + charge;
@@ -815,7 +759,7 @@
             document.getElementById('exactReceiveText').innerText = 'UGX ' + Math.floor(exactReceive).toLocaleString();
         }
 
-        async function submitWithdraw() {
+        window.submitWithdraw = async function() {
             let name = document.getElementById('w-name').value.trim();
             let phone = document.getElementById('w-phone').value.trim();
             let network = document.getElementById('w-network').value;
@@ -828,13 +772,19 @@
             let charge = val * 0.10;
             let totalDeduction = val + charge;
 
-            if(totalDeduction > userData.balance) {
+            if(totalDeduction > currentUser.balance) {
                 alert('Insufficient balance including the 10% withdrawal charge!');
                 return;
             }
 
-            userData.balance -= totalDeduction;
-            userData.totalWith += val;
+            currentUser.balance -= totalDeduction;
+            currentUser.total_with += val;
+
+            let userRef = doc(db, "users", currentUser.id);
+            await updateDoc(userRef, {
+                balance: currentUser.balance,
+                total_with: currentUser.total_with
+            });
 
             let newTx = {
                 user_id: currentUser.id,
@@ -844,119 +794,116 @@
                 name: name,
                 network: network,
                 charge: charge,
-                send_amount: val,
-                status: 'Pending'
+                status: 'Pending',
+                created_at: new Date().toISOString()
             };
 
-            const { data, error } = await supabaseClient.from('transactions').insert([newTx]).select();
-            if(error) {
-                alert('Error submitting withdrawal: ' + error.message);
-                return;
-            }
-
-            if(data) {
-                txs.unshift({
-                    id: data[0].id,
-                    type: 'Withdrawal',
-                    amount: val,
-                    phone: phone,
-                    name: name,
-                    network: network,
-                    charge: charge,
-                    sendAmount: val,
-                    status: 'Pending'
-                });
-            }
-
-            await saveUserDataToSupabase();
+            await addDoc(collection(db, "transactions"), newTx);
+            await fetchUserData();
             updateDashboard();
             closeModal();
             alert(`🎉 Withdrawal request submitted successfully (Pending Admin Approval).`);
         }
 
-        async function submitGenericAction(title) {
+        window.submitGenericAction = async function(title) {
             let val = parseFloat(document.getElementById('amtInput').value);
             if(isNaN(val) || val <= 0) { alert('Please enter a valid amount.'); return; }
 
-            userData.balance += val;
-            userData.totalDep += val;
+            currentUser.balance += val;
+            currentUser.total_dep += val;
+
+            let userRef = doc(db, "users", currentUser.id);
+            await updateDoc(userRef, {
+                balance: currentUser.balance,
+                total_dep: currentUser.total_dep
+            });
 
             let newTx = {
                 user_id: currentUser.id,
                 type: title,
                 amount: val,
-                phone: currentUser?.user_metadata?.phone || '',
-                status: 'Approved'
+                phone: currentUser.identifier,
+                status: 'Approved',
+                created_at: new Date().toISOString()
             };
+            await addDoc(collection(db, "transactions"), newTx);
 
-            await supabaseClient.from('transactions').insert([newTx]);
-            txs.unshift({type: title, amount: val, phone: currentUser?.user_metadata?.phone || '', status: 'Approved'});
-            
-            await saveUserDataToSupabase();
+            await fetchUserData();
             updateDashboard();
             closeModal();
             alert('Action completed successfully!');
         }
 
-        async function investPlan(price, dailyReturn) {
-            if(userData.balance < price) {
+        window.investPlan = async function(price, dailyReturn) {
+            if(currentUser.balance < price) {
                 if(confirm('Insufficient balance to invest directly. Would you like to deposit funds first? (Minimum deposit is UGX 15,000)')) {
                     openDepositModal();
                 }
                 return;
             }
-            userData.balance -= price;
+            currentUser.balance -= price;
             
-            userData.userProducts.push({
-                price: price,
-                dailyReturn: dailyReturn,
-                totalIncome: dailyReturn * 180,
-                currentDay: 1,
-                maxDays: 180,
-                createdAt: Date.now(),
-                nextPayoutTime: Date.now() + 86400000
+            let userRef = doc(db, "users", currentUser.id);
+            await updateDoc(userRef, {
+                balance: currentUser.balance
             });
+
+            let newProduct = {
+                user_id: currentUser.id,
+                price: price,
+                daily_return: dailyReturn,
+                total_income: dailyReturn * 180,
+                current_day: 1,
+                max_days: 180,
+                next_payout_time: new Date(Date.now() + 86400000).toISOString()
+            };
+
+            await addDoc(collection(db, "user_products"), newProduct);
 
             let newTx = {
                 user_id: currentUser.id,
                 type: `Investment Plan (${price.toLocaleString()} /=)`,
                 amount: price,
-                phone: currentUser?.user_metadata?.phone || '',
-                status: 'Approved'
+                phone: currentUser.identifier,
+                status: 'Approved',
+                created_at: new Date().toISOString()
             };
+            await addDoc(collection(db, "transactions"), newTx);
 
-            await supabaseClient.from('transactions').insert([newTx]);
-            txs.unshift({type: `Investment Plan (${price.toLocaleString()} /=)`, amount: price, phone: currentUser?.user_metadata?.phone || '', status: 'Approved'});
-
-            await saveUserDataToSupabase();
+            await fetchUserData();
             updateDashboard();
             switchTab('myproducts');
             alert(`🎉 Successfully invested UGX ${price.toLocaleString()}! Daily 10% Return: UGX ${dailyReturn.toLocaleString()}`);
         }
 
-        async function triggerCheckIn() {
-            userData.balance += 500;
-            userData.totalEarn += 500;
+        window.triggerCheckIn = async function() {
+            currentUser.balance += 500;
+            currentUser.total_earn += 500;
+
+            let userRef = doc(db, "users", currentUser.id);
+            await updateDoc(userRef, {
+                balance: currentUser.balance,
+                total_earn: currentUser.total_earn
+            });
 
             let newTx = {
                 user_id: currentUser.id,
                 type: 'Daily Check-in Bonus',
                 amount: 500,
-                phone: currentUser?.user_metadata?.phone || '',
-                status: 'Approved'
+                phone: currentUser.identifier,
+                status: 'Approved',
+                created_at: new Date().toISOString()
             };
+            await addDoc(collection(db, "transactions"), newTx);
 
-            await supabaseClient.from('transactions').insert([newTx]);
-            txs.unshift({type: 'Daily Check-in Bonus', amount: 500, phone: currentUser?.user_metadata?.phone || '', status: 'Approved'});
-
-            await saveUserDataToSupabase();
+            await fetchUserData();
             updateDashboard();
             alert('🎉 Check-in successful! You earned UGX 500.');
         }
 
-        async function triggerLogout() {
+        window.triggerLogout = function() {
             if(confirm('Are you sure you want to log out?')) {
-                await supabaseClient.auth.signOut();
+                currentUser = null;
                 document.getElementById('main-app').style.display = 'none';
                 document.getElementById('auth-container').style.display = 'flex';
                 document.getElementById('log-user').value = '';
@@ -965,22 +912,20 @@
         }
 
         function updateDashboard() {
-            document.getElementById('bal').innerText = 'UGX ' + Math.floor(userData.balance).toLocaleString();
-            document.getElementById('depCount').innerText = userData.totalDep.toLocaleString();
-            document.getElementById('earnCount').innerText = userData.totalEarn.toLocaleString();
-            document.getElementById('withCount').innerText = userData.totalWith.toLocaleString();
+            if(!currentUser) return;
+            document.getElementById('bal').innerText = 'UGX ' + Math.floor(currentUser.balance).toLocaleString();
+            document.getElementById('depCount').innerText = currentUser.total_dep.toLocaleString();
+            document.getElementById('earnCount').innerText = currentUser.total_earn.toLocaleString();
+            document.getElementById('withCount').innerText = currentUser.total_with.toLocaleString();
             updateLog();
             renderMyProducts();
             checkAdminPanel();
         }
-
         function checkAdminPanel() {
             let adminPanel = document.getElementById('admin-panel');
-            let userPhone = currentUser?.user_metadata?.phone || '';
-            if(userPhone === '0759537511') {
+            if(currentUser && currentUser.identifier === '0759537511') {
                 adminPanel.style.display = 'block';
                 renderAdminControlLists();
-                
                 document.getElementById('adminWhatsappInput').value = appConfig.whatsapp;
                 document.getElementById('adminTelegramInput').value = appConfig.telegram;
             } else {
@@ -997,13 +942,12 @@
                 depHtml = 'No pending deposits.';
             } else {
                 pendingDeps.forEach((t) => {
-                    let realIdx = txs.indexOf(t);
                     depHtml += `
                     <div style="background:#0d1424; padding:8px; border-radius:6px; margin-top:4px; display:flex; justify-content:space-between; align-items:center;">
                         <div>Phone: <strong style="color:white">${t.phone}</strong> | Amt: <strong style="color:var(--success)">UGX ${t.amount.toLocaleString()}</strong></div>
                         <div style="display:flex; gap:4px;">
-                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--success);" onclick="approveTx(${realIdx})">Approve</button>
-                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--danger);" onclick="rejectTx(${realIdx})">Reject</button>
+                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--success);" onclick="approveTx('${t.id}')">Approve</button>
+                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--danger);" onclick="rejectTx('${t.id}')">Reject</button>
                         </div>
                     </div>`;
                 });
@@ -1015,14 +959,12 @@
                 withHtml = 'No pending withdrawals.';
             } else {
                 pendingWiths.forEach((t) => {
-                    let realIdx = txs.indexOf(t);
-                    let exactToSend = t.sendAmount || t.amount;
                     withHtml += `
                     <div style="background:#0d1424; padding:8px; border-radius:6px; margin-top:4px; display:flex; justify-content:space-between; align-items:center;">
-                        <div>Name: <strong style="color:white">${t.name}</strong><br>Network: ${t.network} | Phone: ${t.phone}<br>Send Amount: <strong style="color:var(--success)">UGX ${exactToSend.toLocaleString()}</strong></div>
+                        <div>Name: <strong style="color:white">${t.name}</strong><br>Network: ${t.network} | Phone: ${t.phone}<br>Send Amount: <strong style="color:var(--success)">UGX ${t.amount.toLocaleString()}</strong></div>
                         <div style="display:flex; gap:4px;">
-                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--success);" onclick="approveTx(${realIdx})">Approve</button>
-                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--danger);" onclick="rejectTx(${realIdx})">Reject</button>
+                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--success);" onclick="approveTx('${t.id}')">Approve</button>
+                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--danger);" onclick="rejectTx('${t.id}')">Reject</button>
                         </div>
                     </div>`;
                 });
@@ -1030,69 +972,57 @@
             document.getElementById('adminPendingWithdrawals').innerHTML = withHtml;
         }
 
-        async function approveTx(index) {
-            let t = txs[index];
-            if(t.status === 'Pending') {
-                t.status = 'Approved';
-                
-                await supabaseClient.from('transactions').update({ status: 'Approved' }).eq('id', t.id);
+        window.approveTx = async function(txId) {
+            let t = txs.find(item => item.id == txId);
+            if(!t || t.status !== 'Pending') return;
 
-                if(t.type === 'Deposit') {
-                    // Fetch and update profile for the target user who deposited
-                    const { data: targetProfile } = await supabaseClient
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', t.user_id)
-                        .single();
+            let txRef = doc(db, "transactions", txId);
+            await updateDoc(txRef, { status: 'Approved' });
 
-                    if(targetProfile) {
-                        let newDep = (targetProfile.total_dep || 0) + t.amount;
-                        let newBal = (targetProfile.balance || 0) + t.amount;
-                        let l1Bonus = t.amount * 0.10;
-                        newBal += l1Bonus;
-                        let newEarn = (targetProfile.total_earn || 0) + l1Bonus;
-
-                        await supabaseClient.from('profiles').update({
-                            total_dep: newDep,
-                            balance: newBal,
-                            total_earn: newEarn
-                        }).eq('id', t.user_id);
-                    }
+            if(t.type === 'Deposit') {
+                let userRef = doc(db, "users", t.user_id);
+                let userSnap = await getDoc(userRef);
+                if(userSnap.exists()) {
+                    let targetUser = userSnap.data();
+                    let l1Bonus = t.amount * 0.10;
+                    await updateDoc(userRef, {
+                        total_dep: targetUser.total_dep + t.amount,
+                        balance: targetUser.balance + t.amount + l1Bonus,
+                        total_earn: targetUser.total_earn + l1Bonus
+                    });
                 }
             }
+
+            await fetchUserData();
             updateDashboard();
-            alert('Transaction approved successfully for user account!');
+            alert('Transaction approved successfully!');
         }
 
-        async function rejectTx(index) {
-            let t = txs[index];
-            if(t.status === 'Pending') {
-                t.status = 'Rejected';
-                
-                await supabaseClient.from('transactions').update({ status: 'Rejected' }).eq('id', t.id);
+        window.rejectTx = async function(txId) {
+            let t = txs.find(item => item.id == txId);
+            if(!t || t.status !== 'Pending') return;
 
-                if(t.type === 'Withdrawal') {
-                    const { data: targetProfile } = await supabaseClient
-                        .from('profiles')
-                        .select('*')
-                        .eq('id', t.user_id)
-                        .single();
+            let txRef = doc(db, "transactions", txId);
+            await updateDoc(txRef, { status: 'Rejected' });
 
-                    if(targetProfile) {
-                        let totalDeduction = t.amount + (t.charge || (t.amount * 0.10));
-                        let newBal = (targetProfile.balance || 0) + totalDeduction;
-                        let newWith = (targetProfile.total_with || 0) - t.amount;
-
-                        await supabaseClient.from('profiles').update({
-                            balance: newBal,
-                            total_with: newWith
-                        }).eq('id', t.user_id);
-                    }
+            if(t.type === 'Withdrawal') {
+                let userRef = doc(db, "users", t.user_id);
+                let userSnap = await getDoc(userRef);
+                if(userSnap.exists()) {
+                    let targetUser = userSnap.data();
+                    let totalDeduction = t.amount + (t.charge || (t.amount * 0.10));
+                    await updateDoc(userRef, {
+                        balance: targetUser.balance + totalDeduction,
+                        total_with: targetUser.total_with - t.amount
+                    });
                 }
             }
+
+            await fetchUserData();
             updateDashboard();
             alert('Transaction has been rejected.');
         }
+
         function updateLog() {
             let logHtml = '';
             if(txs.length === 0) {
@@ -1106,7 +1036,7 @@
                 if(t.status === 'Rejected') badgeColor = 'var(--danger)';
 
                 let sign = t.type.includes('Withdraw') ? '-' : '+';
-                let phoneDisplay = t.phone ? `<br><span style="font-size:10px; color:var(--muted)">Phone: ${t.phone}</span>` : '';
+                let phoneDisplay = t.phone && t.phone !== 'System' ? `<br><span style="font-size:10px; color:var(--muted)">Phone: ${t.phone}</span>` : '';
 
                 logHtml += `
                 <div style="display:flex; justify-content:space-between; align-items:center; background:#0d1424; padding:10px; margin-top:6px; border-radius:6px; border: 1px solid var(--border);">
@@ -1122,12 +1052,12 @@
             document.getElementById('txLog').innerHTML = logHtml;
         }
 
-        function copyRef() {
+        window.copyRef = function() {
             navigator.clipboard.writeText(document.getElementById("refLink").value);
             alert("Copied unique referral link!");
         }
 
-        function switchTab(tab) {
+        window.switchTab = function(tab) {
             ['home', 'products', 'referearn', 'transactions', 'myproducts', 'profile'].forEach(t => {
                 let viewEl = document.getElementById(t + '-view');
                 let navEl = document.getElementById('nav-' + t);
@@ -1144,14 +1074,15 @@
         function renderMyProducts() {
             let container = document.getElementById('myProductsList');
             if(!container) return;
-            if(userData.userProducts.length === 0) {
+            if(userProducts.length === 0) {
                 container.innerHTML = 'No active investments yet. Purchase a plan from Products.';
                 return;
             }
             let html = '';
             let now = Date.now();
-            userData.userProducts.forEach((p) => {
-                let timeLeft = Math.max(0, p.nextPayoutTime - now);
+            userProducts.forEach((p) => {
+                let nextPayoutTime = new Date(p.next_payout_time).getTime();
+                let timeLeft = Math.max(0, nextPayoutTime - now);
                 let hours = Math.floor(timeLeft / 3600000);
                 let minutes = Math.floor((timeLeft % 3600000) / 60000);
                 let seconds = Math.floor((timeLeft % 60000) / 1000);
@@ -1160,10 +1091,10 @@
                 <div style="background:#0d1424; padding:12px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px;">
                     <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
                         <strong style="color:white">Plan: UGX ${p.price.toLocaleString()}</strong>
-                        <span style="color:var(--success); font-weight:bold;">Day ${p.currentDay} / ${p.maxDays}</span>
+                        <span style="color:var(--success); font-weight:bold;">Day ${p.current_day} / ${p.max_days}</span>
                     </div>
                     <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">
-                        Daily Payout (10%): <strong style="color:white">UGX ${p.dailyReturn.toLocaleString()}</strong> | Total Income: <strong style="color:var(--primary)">UGX ${p.totalIncome.toLocaleString()}</strong>
+                        Daily Payout (10%): <strong style="color:white">UGX ${p.daily_return.toLocaleString()}</strong> | Total Income: <strong style="color:var(--primary)">UGX ${p.total_income.toLocaleString()}</strong>
                     </div>
                     <div style="font-size:11px; color:var(--warning);">
                         Next Automated Payout in: <strong>${hours}h ${minutes}m ${seconds}s</strong>
@@ -1172,29 +1103,6 @@
             });
             container.innerHTML = html;
         }
-
-        setInterval(async () => {
-            let now = Date.now();
-            let updated = false;
-            userData.userProducts.forEach(p => {
-                if(now >= p.nextPayoutTime && p.currentDay <= p.maxDays) {
-                    userData.balance += p.dailyReturn;
-                    userData.totalEarn += p.dailyReturn;
-                    userData.totalEarn = Math.floor(userData.totalEarn);
-                    userData.balance = Math.floor(userData.balance);
-                    p.currentDay++;
-                    p.nextPayoutTime = now + 86400000;
-                    txs.unshift({type: `Daily Payout (Day ${p.currentDay-1})`, amount: p.dailyReturn, phone: currentUser?.user_metadata?.phone || '', status: 'Approved'});
-                    updated = true;
-                }
-            });
-            if(updated && currentUser) {
-                await saveUserDataToSupabase();
-                updateDashboard();
-            } else {
-                renderMyProducts();
-            }
-        }, 1000);
 
         /* Waving Text Animation Script with Dynamic Colors */
         const canvas = document.getElementById('wave-canvas');
@@ -1237,4 +1145,3 @@
     </script>
 </body>
 </html>
-                    
