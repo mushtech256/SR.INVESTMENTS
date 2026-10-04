@@ -387,10 +387,18 @@
                         // --- SUPABASE INITIALIZATION ---
         const SUPABASE_URL = 'https://tjmvxyxibcdqtyaoybyhi.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqbXZ5eGliY2RxdHlhb3lieWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNjU3NDgsImV4cCI6MjEwNjY0MTc0OH0.HOKItumJu2COWuxm3FrB6ujVHBWK3bY0QE7-xl1K6XU';
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
+        let supabaseClient = null;
+        try {
+            if (window.supabase) {
+                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            } else {
+                console.error("Supabase SDK script not loaded yet.");
+            }
+        } catch (err) {
+            console.error("Error initializing Supabase client:", err);
+        }
         
-
         let currentUser = null;
         let userData = {
             balance: 3000,
@@ -528,11 +536,13 @@
                 };
             }
 
-            // Fetch transactions
+                        // Fetch transactions
             const { data: txData } = await supabaseClient
                 .from('transactions')
                 .select('*')
+                .eq('user_id', currentUser.id)
                 .order('created_at', { ascending: false });
+                
 
             if (txData) {
                 txs = txData.map(t => ({
