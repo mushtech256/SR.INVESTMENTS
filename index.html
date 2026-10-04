@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SR.Investments</title>
+    <!-- Include Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --primary: #d81b60;
@@ -247,7 +249,7 @@
                 <div style="color:var(--primary); font-weight:bold; font-size:15px; margin-bottom:4px;">INVESTMENT OPPORTUNITIES</div>
                 <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">Earn 10% daily automated payouts for 180 days.</div>
 
-                <div class="plan-row"><div class="plan-info"><div>15,000 /=</div><div>Daily (10%): +1,500 /= | Total: 270,000 /=</div></div><button class="btn" style="padding:8px 12px; background:var::success;" onclick="investPlan(15000, 1500)">Invest</button></div>
+                <div class="plan-row"><div class="plan-info"><div>15,000 /=</div><div>Daily (10%): +1,500 /= | Total: 270,000 /=</div></div><button class="btn" style="padding:8px 12px; background:var(--success);" onclick="investPlan(15000, 1500)">Invest</button></div>
                 <div class="plan-row"><div class="plan-info"><div>30,000 /=</div><div>Daily (10%): +3,000 /= | Total: 540,000 /=</div></div><button class="btn" style="padding:8px 12px; background:var(--success);" onclick="investPlan(30000, 3000)">Invest</button></div>
                 <div class="plan-row"><div class="plan-info"><div>50,000 /=</div><div>Daily (10%): +5,000 /= | Total: 900,000 /=</div></div><button class="btn" style="padding:8px 12px; background:var(--success);" onclick="investPlan(50000, 5000)">Invest</button></div>
                 <div class="plan-row"><div class="plan-info"><div>100,000 /=</div><div>Daily (10%): +10,000 /= | Total: 1,800,000 /=</div></div><button class="btn" style="padding:8px 12px; background:var(--success);" onclick="investPlan(100000, 10000)">Invest</button></div>
@@ -303,7 +305,7 @@
 
                 <!-- PROFILE SETTINGS MENU -->
                 <div style="background:#0d1424; padding:15px; border-radius:8px; border:1px solid var(--border); margin-bottom:15px; text-align:left;">
-                    <div style="color:var(--primary); font-weight:bold; font-size:13px; margin-bottom:10px;">⚙️ Profile Settings</div>
+                    <div style="color:var(--primary); font-weight:bold; font-size:13px; margin-bottom:10px;">⚙️️ Profile Settings</div>
                     
                     <label style="font-size:11px; color:var(--muted);">Profile Picture (Choose from storage)</label>
                     <input type="file" id="avatarFileInput" class="input" accept="image/*" style="font-size:11px; padding:6px;" onchange="handleAvatarUpload(event)">
@@ -343,7 +345,7 @@
                         <label style="font-size:10px; color:var(--muted);">Telegram Link</label>
                         <input type="text" id="adminTelegramInput" class="input" style="font-size:11px; margin:4px 0 8px 0;" placeholder="https://t.me/...">
 
-                        <button class="btn" style="width:100%; font-size:11px; background:#334155;" onclick="saveAdminSocialLinks()">Save Links</button>
+                        button class="btn" style="width:100%; font-size:11px; background:#334155;" onclick="saveAdminSocialLinks()">Save Links</button>
                     </div>
 
                      <div style="font-size:13px; font-weight:bold; color:white; margin-bottom:6px;">Pending Deposits</div>
@@ -382,32 +384,28 @@
     </div>
 
     <script>
-        // Multi-user database mock simulation mapping user phone/email to state including permanent product record storage
-        let usersDB = {};
-        let currentUserPhone = '';
-        let registeredUserStore = null;
+        // --- SUPABASE INITIALIZATION ---
+        // Replace with your actual Supabase URL and Anon Key
+        const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let currentUser = null;
+        let userData = {
+            balance: 3000,
+            totalDep: 0,
+            totalWith: 0,
+            totalEarn: 3000,
+            userProducts: [],
+            displayName: 'User Name',
+            avatarUrl: ''
+        };
         let txs = [];
         
-        // Global Social Links Storage
         let appConfig = {
             whatsapp: "https://chat.whatsapp.com/J8WonMtmqgW6ljsV5fI3l5?s=cl&p=a&mlu=4&ilr=4",
             telegram: "https://t.me/+s63xqIYPEdo5ZGI0"
         };
-
-        function getCurrentUserData() {
-            if(!usersDB[currentUserPhone]) {
-                usersDB[currentUserPhone] = {
-                    balance: 3000,
-                    totalDep: 0,
-                    totalWith: 0,
-                    totalEarn: 3000,
-                    userProducts: [], // Retains user purchased products securely
-                    displayName: 'User Name',
-                    avatarUrl: ''
-                };
-            }
-            return usersDB[currentUserPhone];
-        }
 
         function switchAuthTab(tab) {
             document.getElementById('register-form').classList.remove('active');
@@ -424,142 +422,194 @@
             }
         }
 
-        function validateUserIdentifier(inputVal) {
-            const isEmail = inputVal.includes('@') && inputVal.includes('.');
-            const isPhone = /^07\d{8}$/.test(inputVal);
-            return isEmail || isPhone;
+        // --- 1. SUPABASE REGISTRATION ---
+        async function handleRegister() {
+            let phoneOrEmail = document.getElementById('reg-user').value.trim();
+            let pass = document.getElementById('reg-pass').value.trim();
+            let passConfirm = document.getElementById('reg-pass-confirm').value.trim();
+
+            if (!phoneOrEmail || !pass) {
+                alert('Please fill in all required fields.');
+                return;
+            }
+            if (pass !== passConfirm) {
+                alert('Passwords do not match.');
+                return;
+            }
+
+            // Map phone/email to a pseudo-email if phone number is used (Supabase Auth requires email format)
+            let authEmail = phoneOrEmail.includes('@') ? phoneOrEmail : `${phoneOrEmail}@sr-investments.ug`;
+
+            const { data, error } = await supabaseClient.auth.signUp({
+                email: authEmail,
+                password: pass,
+                options: {
+                    data: { phone: phoneOrEmail }
+                }
+            });
+
+            if (error) {
+                alert('Registration failed: ' + error.message);
+                return;
+            }
+
+            currentUser = data.user;
+            
+            // Initialize user profile record in database table 'profiles'
+            const initialProfile = {
+                id: currentUser.id,
+                phone: phoneOrEmail,
+                balance: 3000,
+                total_dep: 0,
+                total_with: 0,
+                total_earn: 3000,
+                display_name: phoneOrEmail,
+                avatar_url: '',
+                user_products: []
+            };
+
+            const { error: profileError } = await supabaseClient.from('profiles').insert([initialProfile]);
+            if (profileError) {
+                console.error('Error creating profile record:', profileError.message);
+            }
+
+            alert('Registration successful! Welcome bonus of UGX 3,000 added.');
+            loadUserDataFromSupabase();
+            launchApp();
         }
 
-        // --- 1. REGISTRATION FUNCTION ---
-function handleRegister() {
-    let phoneOrEmail = document.getElementById('reg-user').value.trim();
-    let pass = document.getElementById('reg-pass').value.trim();
+        // --- 2. SUPABASE LOGIN ---
+        async function handleLogin() {
+            let userIdentifier = document.getElementById('log-user').value.trim();
+            let pass = document.getElementById('log-pass').value.trim();
 
-    if (!phoneOrEmail || !pass) {
-        alert('Please fill in all required fields.');
-        return;
-    }
+            if (!userIdentifier || !pass) {
+                alert('Please fill in both fields.');
+                return;
+            }
 
-    // Get existing users from localStorage
-    let users = JSON.parse(localStorage.getItem('sr_users') || '[]');
+            let authEmail = userIdentifier.includes('@') ? userIdentifier : `${userIdentifier}@sr-investments.ug`;
 
-    // Check if user already exists
-    if (users.some(u => u.phone === phoneOrEmail || u.email === phoneOrEmail)) {
-        alert('Account already exists with this phone or email!');
-        return;
-    }
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
+                email: authEmail,
+                password: pass
+            });
 
-    // Create new user object with welcome bonus & default data
-    let newUser = {
-        phone: phoneOrEmail,
-        email: phoneOrEmail.includes('@') ? phoneOrEmail : '',
-        pass: pass,
-        balance: 3000, 
-        totalDep: 0,
-        totalWith: 0,
-        totalEarn: 3000,
-        userProducts: [],
-        displayName: phoneOrEmail,
-        avatarUrl: ''
-    };
+            if (error) {
+                alert('Login failed: ' + error.message);
+                return;
+            }
 
-    // Save to users array & set active session
-    users.push(newUser);
-    localStorage.setItem('sr_users', JSON.stringify(users));
-    localStorage.setItem('sr_current_user', JSON.stringify(newUser));
+            currentUser = data.user;
+            await loadUserDataFromSupabase();
+            launchApp();
+            alert('Login successful!');
+        }
 
-    currentUserPhone = phoneOrEmail;
-    
-    // Initialize usersDB reference if used elsewhere in your app
-    if(typeof usersDB !== 'undefined') {
-        usersDB[currentUserPhone] = newUser;
-    }
+        async function loadUserDataFromSupabase() {
+            if (!currentUser) return;
+            
+            const { data, error } = await supabaseClient
+                .from('profiles')
+                .select('*')
+                .eq('id', currentUser.id)
+                .single();
 
-    alert('Registration successful! Welcome bonus of UGX 3,000 added.');
-    
-    syncProfileUI();
-    launchApp();
-}
+            if (data) {
+                userData = {
+                    balance: data.balance || 0,
+                    totalDep: data.total_dep || 0,
+                    totalWith: data.total_with || 0,
+                    totalEarn: data.total_earn || 0,
+                    userProducts: data.user_products || [],
+                    displayName: data.display_name || 'User Name',
+                    avatarUrl: data.avatar_url || ''
+                };
+            }
 
-// --- 2. LOGIN FUNCTION ---
-function handleLogin() {
-    let userIdentifier = document.getElementById('log-user').value.trim();
-    let pass = document.getElementById('log-pass').value.trim();
+            // Fetch transactions
+            const { data: txData } = await supabaseClient
+                .from('transactions')
+                .select('*')
+                .order('created_at', { ascending: false });
 
-    if (!userIdentifier || !pass) {
-        alert('Please fill in both fields.');
-        return;
-    }
+            if (txData) {
+                txs = txData.map(t => ({
+                    id: t.id,
+                    type: t.type,
+                    amount: t.amount,
+                    phone: t.phone,
+                    status: t.status,
+                    name: t.name,
+                    network: t.network,
+                    charge: t.charge,
+                    sendAmount: t.send_amount
+                }));
+            }
 
-    // Retrieve the stored users list from localStorage
-    let users = JSON.parse(localStorage.getItem('sr_users') || '[]');
-    let foundUser = users.find(u => u.phone === userIdentifier || u.email === userIdentifier);
+            syncProfileUI();
+            updateDashboard();
+        }
 
-    if (!foundUser) {
-        alert('Account not found. Please register first.');
-        return;
-    }
-
-    // Strict password match check
-    if (foundUser.pass !== pass && foundUser.password !== pass) {
-        alert('Incorrect password! Please try again.');
-        return;
-    }
-
-    // Set active session
-    localStorage.setItem('sr_current_user', JSON.stringify(foundUser));
-    currentUserPhone = foundUser.phone || foundUser.email;
-    
-    if(typeof usersDB !== 'undefined' && !usersDB[currentUserPhone]) {
-        usersDB[currentUserPhone] = foundUser;
-    }
-
-    syncProfileUI();
-    launchApp();
-    alert('Login successful!');
-}
+        async function saveUserDataToSupabase() {
+            if (!currentUser) return;
+            await supabaseClient.from('profiles').update({
+                balance: userData.balance,
+                total_dep: userData.totalDep,
+                total_with: userData.totalWith,
+                total_earn: userData.totalEarn,
+                user_products: userData.userProducts,
+                display_name: userData.displayName,
+                avatar_url: userData.avatarUrl
+            }).eq('id', currentUser.id);
+        }
 
         function syncProfileUI() {
-            let uData = getCurrentUserData();
-            document.getElementById('profilePhoneDisplay').innerText = currentUserPhone;
-            document.getElementById('profileDisplayName').innerText = uData.displayName;
-            document.getElementById('settingNameInput').value = uData.displayName;
+            let phoneDisplay = currentUser?.user_metadata?.phone || currentUser?.email || '-';
+            document.getElementById('profilePhoneDisplay').innerText = phoneDisplay;
+            document.getElementById('profileDisplayName').innerText = userData.displayName;
+            document.getElementById('settingNameInput').value = userData.displayName;
             
             let avatarImg = document.getElementById('profileAvatarImg');
-            if(uData.avatarUrl) {
-                avatarImg.src = uData.avatarUrl;
+            if(userData.avatarUrl) {
+                avatarImg.src = userData.avatarUrl;
             } else {
                 avatarImg.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'></path><circle cx='12' cy='7' r='4'></circle></svg>";
             }
+
+            let phoneVal = currentUser?.user_metadata?.phone || '';
+            if(phoneVal) {
+                document.getElementById('refLink').value = `https://sr-investments.ug/ref?code=${phoneVal}`;
+            }
         }
 
-        function handleAvatarUpload(event) {
+        async function handleAvatarUpload(event) {
             let file = event.target.files[0];
             if(!file) return;
 
             let reader = new FileReader();
-            reader.onload = function(e) {
-                let uData = getCurrentUserData();
-                uData.avatarUrl = e.target.result;
+            reader.onload = async function(e) {
+                userData.avatarUrl = e.target.result;
                 syncProfileUI();
+                await saveUserDataToSupabase();
                 alert('Profile picture updated successfully!');
             };
             reader.readAsDataURL(file);
         }
 
-        function saveProfileName() {
+        async function saveProfileName() {
             let newName = document.getElementById('settingNameInput').value.trim();
             if(!newName) {
                 alert('Display name cannot be empty.');
                 return;
             }
-            let uData = getCurrentUserData();
-            uData.displayName = newName;
+            userData.displayName = newName;
             syncProfileUI();
+            await saveUserDataToSupabase();
             alert('Display name updated successfully!');
         }
 
-        function changePassword() {
+        async function changePassword() {
             let oldPass = document.getElementById('oldPassInput').value.trim();
             let newPass = document.getElementById('newPassInput').value.trim();
 
@@ -571,12 +621,13 @@ function handleLogin() {
                 alert('New password must be alphanumeric.');
                 return;
             }
-            if(registeredUserStore && oldPass !== registeredUserStore.pass) {
-                alert('Incorrect current password!');
+
+            const { error } = await supabaseClient.auth.updateUser({ password: newPass });
+            if (error) {
+                alert('Password update failed: ' + error.message);
                 return;
             }
 
-            registeredUserStore.pass = newPass;
             document.getElementById('oldPassInput').value = '';
             document.getElementById('newPassInput').value = '';
             alert('Password changed successfully!');
@@ -616,10 +667,11 @@ function handleLogin() {
         }
 
         function openDepositModal() {
+            let defaultPhone = currentUser?.user_metadata?.phone || '';
             document.getElementById('modal-body-content').innerHTML = `
                 <h3 style="color:var(--primary); font-size:14px; margin-bottom:10px;">Deposit / Invest</h3>
                 <label style="font-size:11px; color:var(--muted);">Your Phone Number</label>
-                <input type="text" id="dep-phone" class="input" placeholder="07XXXXXXXX" value="${currentUserPhone.startsWith('07') ? currentUserPhone : ''}">
+                <input type="text" id="dep-phone" class="input" placeholder="07XXXXXXXX" value="${defaultPhone}">
                 <label style="font-size:11px; color:var(--muted);">Amount (Min UGX 15,000)</label>
                 <input type="number" id="dep-amt" class="input" placeholder="Enter amount (UGX)">
                 <button class="btn" style="width:100%; background:var(--success); margin-top:5px;" onclick="processDepositStep1()">Confirm</button>
@@ -670,7 +722,7 @@ function handleLogin() {
             alert("Payment number copied to clipboard!");
         }
 
-        function finalizeDeposit() {
+        async function finalizeDeposit() {
             let sentPhone = document.getElementById('sent-phone').value.trim();
             let sentAmt = parseFloat(document.getElementById('sent-amt').value);
 
@@ -683,26 +735,43 @@ function handleLogin() {
                 return;
             }
 
-            txs.unshift({
+            let newTx = {
+                user_id: currentUser.id,
                 type: 'Deposit',
                 amount: sentAmt,
                 phone: sentPhone,
                 status: 'Pending'
-            });
+            };
 
+            const { data, error } = await supabaseClient.from('transactions').insert([newTx]).select();
+            if(error) {
+                alert('Error submitting deposit: ' + error.message);
+                return;
+            }
+
+            if(data) {
+                txs.unshift({
+                    id: data[0].id,
+                    type: 'Deposit',
+                    amount: sentAmt,
+                    phone: sentPhone,
+                    status: 'Pending'
+                });
+            }
             updateDashboard();
             closeModal();
             alert('Deposit submitted. Kindly wait for Admin approval.');
         }
 
         function openWithdrawModal() {
+            let defaultPhone = currentUser?.user_metadata?.phone || '';
             document.getElementById('modal-body-content').innerHTML = `
                 <h3 style="color:var(--primary); font-size:14px; margin-bottom:10px;">Withdraw Funds</h3>
                 <label style="font-size:11px; color:var(--muted);">Full Name</label>
                 <input type="text" id="w-name" class="input" placeholder="Full Name">
 
                 <label style="font-size:11px; color:var(--muted);">Phone Number</label>
-                <input type="text" id="w-phone" class="input" placeholder="07XXXXXXXX" value="${currentUserPhone.startsWith('07') ? currentUserPhone : ''}">
+                <input type="text" id="w-phone" class="input" placeholder="07XXXXXXXX" value="${defaultPhone}">
 
                 <label style="font-size:11px; color:var(--muted);">Network Provider</label>
                 <select id="w-network" class="input">
@@ -734,7 +803,8 @@ function handleLogin() {
             document.getElementById('totalDedText').innerText = 'UGX ' + Math.floor(totalDeduction).toLocaleString();
             document.getElementById('exactReceiveText').innerText = 'UGX ' + Math.floor(exactReceive).toLocaleString();
         }
-        function submitWithdraw() {
+
+        async function submitWithdraw() {
             let name = document.getElementById('w-name').value.trim();
             let phone = document.getElementById('w-phone').value.trim();
             let network = document.getElementById('w-network').value;
@@ -746,55 +816,87 @@ function handleLogin() {
 
             let charge = val * 0.10;
             let totalDeduction = val + charge;
-            let uData = getCurrentUserData();
 
-            if(totalDeduction > uData.balance) {
+            if(totalDeduction > userData.balance) {
                 alert('Insufficient balance including the 10% withdrawal charge!');
                 return;
             }
 
-            uData.balance -= totalDeduction;
-            uData.totalWith += val;
-            txs.unshift({
+            userData.balance -= totalDeduction;
+            userData.totalWith += val;
+
+            let newTx = {
+                user_id: currentUser.id,
                 type: 'Withdrawal',
                 amount: val,
                 phone: phone,
                 name: name,
                 network: network,
                 charge: charge,
-                sendAmount: val,
+                send_amount: val,
                 status: 'Pending'
-            });
+            };
+
+            const { data, error } = await supabaseClient.from('transactions').insert([newTx]).select();
+            if(error) {
+                alert('Error submitting withdrawal: ' + error.message);
+                return;
+            }
+
+            if(data) {
+                txs.unshift({
+                    id: data[0].id,
+                    type: 'Withdrawal',
+                    amount: val,
+                    phone: phone,
+                    name: name,
+                    network: network,
+                    charge: charge,
+                    sendAmount: val,
+                    status: 'Pending'
+                });
+            }
+
+            await saveUserDataToSupabase();
             updateDashboard();
             closeModal();
             alert(`🎉 Withdrawal request submitted successfully (Pending Admin Approval).`);
         }
 
-        function submitGenericAction(title) {
+        async function submitGenericAction(title) {
             let val = parseFloat(document.getElementById('amtInput').value);
             if(isNaN(val) || val <= 0) { alert('Please enter a valid amount.'); return; }
 
-            let uData = getCurrentUserData();
-            uData.balance += val;
-            uData.totalDep += val;
-            txs.unshift({type: title, amount: val, phone: currentUserPhone, status: 'Approved'});
+            userData.balance += val;
+            userData.totalDep += val;
+
+            let newTx = {
+                user_id: currentUser.id,
+                type: title,
+                amount: val,
+                phone: currentUser?.user_metadata?.phone || '',
+                status: 'Approved'
+            };
+
+            await supabaseClient.from('transactions').insert([newTx]);
+            txs.unshift({type: title, amount: val, phone: currentUser?.user_metadata?.phone || '', status: 'Approved'});
+            
+            await saveUserDataToSupabase();
             updateDashboard();
             closeModal();
             alert('Action completed successfully!');
         }
 
-        function investPlan(price, dailyReturn) {
-            let uData = getCurrentUserData();
-            if(uData.balance < price) {
+        async function investPlan(price, dailyReturn) {
+            if(userData.balance < price) {
                 if(confirm('Insufficient balance to invest directly. Would you like to deposit funds first? (Minimum deposit is UGX 15,000)')) {
                     openDepositModal();
                 }
                 return;
             }
-            uData.balance -= price;
+            userData.balance -= price;
             
-            // Permanently saved to the active user's persistent product record array
-            uData.userProducts.push({
+            userData.userProducts.push({
                 price: price,
                 dailyReturn: dailyReturn,
                 totalIncome: dailyReturn * 180,
@@ -804,23 +906,46 @@ function handleLogin() {
                 nextPayoutTime: Date.now() + 86400000
             });
 
-            txs.unshift({type: `Investment Plan (${price.toLocaleString()} /=)`, amount: price, phone: currentUserPhone, status: 'Approved'});
+            let newTx = {
+                user_id: currentUser.id,
+                type: `Investment Plan (${price.toLocaleString()} /=)`,
+                amount: price,
+                phone: currentUser?.user_metadata?.phone || '',
+                status: 'Approved'
+            };
+
+            await supabaseClient.from('transactions').insert([newTx]);
+            txs.unshift({type: `Investment Plan (${price.toLocaleString()} /=)`, amount: price, phone: currentUser?.user_metadata?.phone || '', status: 'Approved'});
+
+            await saveUserDataToSupabase();
             updateDashboard();
             switchTab('myproducts');
             alert(`🎉 Successfully invested UGX ${price.toLocaleString()}! Daily 10% Return: UGX ${dailyReturn.toLocaleString()}`);
         }
 
-        function triggerCheckIn() {
-            let uData = getCurrentUserData();
-            uData.balance += 500;
-            uData.totalEarn += 500;
-            txs.unshift({type: 'Daily Check-in Bonus', amount: 500, phone: currentUserPhone, status: 'Approved'});
+        async function triggerCheckIn() {
+            userData.balance += 500;
+            userData.totalEarn += 500;
+
+            let newTx = {
+                user_id: currentUser.id,
+                type: 'Daily Check-in Bonus',
+                amount: 500,
+                phone: currentUser?.user_metadata?.phone || '',
+                status: 'Approved'
+            };
+
+            await supabaseClient.from('transactions').insert([newTx]);
+            txs.unshift({type: 'Daily Check-in Bonus', amount: 500, phone: currentUser?.user_metadata?.phone || '', status: 'Approved'});
+
+            await saveUserDataToSupabase();
             updateDashboard();
             alert('🎉 Check-in successful! You earned UGX 500.');
         }
 
-        function triggerLogout() {
+        async function triggerLogout() {
             if(confirm('Are you sure you want to log out?')) {
+                await supabaseClient.auth.signOut();
                 document.getElementById('main-app').style.display = 'none';
                 document.getElementById('auth-container').style.display = 'flex';
                 document.getElementById('log-user').value = '';
@@ -829,11 +954,10 @@ function handleLogin() {
         }
 
         function updateDashboard() {
-            let uData = getCurrentUserData();
-            document.getElementById('bal').innerText = 'UGX ' + Math.floor(uData.balance).toLocaleString();
-            document.getElementById('depCount').innerText = uData.totalDep.toLocaleString();
-            document.getElementById('earnCount').innerText = uData.totalEarn.toLocaleString();
-            document.getElementById('withCount').innerText = uData.totalWith.toLocaleString();
+            document.getElementById('bal').innerText = 'UGX ' + Math.floor(userData.balance).toLocaleString();
+            document.getElementById('depCount').innerText = userData.totalDep.toLocaleString();
+            document.getElementById('earnCount').innerText = userData.totalEarn.toLocaleString();
+            document.getElementById('withCount').innerText = userData.totalWith.toLocaleString();
             updateLog();
             renderMyProducts();
             checkAdminPanel();
@@ -841,11 +965,11 @@ function handleLogin() {
 
         function checkAdminPanel() {
             let adminPanel = document.getElementById('admin-panel');
-            if(currentUserPhone === '0759537511') {
+            let userPhone = currentUser?.user_metadata?.phone || '';
+            if(userPhone === '0759537511') {
                 adminPanel.style.display = 'block';
                 renderAdminControlLists();
                 
-                // Set current values in admin inputs
                 document.getElementById('adminWhatsappInput').value = appConfig.whatsapp;
                 document.getElementById('adminTelegramInput').value = appConfig.telegram;
             } else {
@@ -895,49 +1019,63 @@ function handleLogin() {
             document.getElementById('adminPendingWithdrawals').innerHTML = withHtml;
         }
 
-        function approveTx(index) {
+        async function approveTx(index) {
             let t = txs[index];
             if(t.status === 'Pending') {
                 t.status = 'Approved';
                 
-                let targetUser = t.phone;
-                if(!usersDB[targetUser]) {
-                    usersDB[targetUser] = {
-                        balance: 3000,
-                        totalDep: 0,
-                        totalWith: 0,
-                        totalEarn: 3000,
-                        userProducts: [],
-                        displayName: targetUser,
-                        avatarUrl: ''
-                    };
-                }
-                let targetUserData = usersDB[targetUser];
+                await supabaseClient.from('transactions').update({ status: 'Approved' }).eq('id', t.id);
 
                 if(t.type === 'Deposit') {
-                    targetUserData.totalDep += t.amount;
-                    targetUserData.balance += t.amount;
-                    
-                    let l1Bonus = t.amount * 0.10;
-                    targetUserData.totalEarn += l1Bonus;
-                    targetUserData.balance += l1Bonus;
+                    // Fetch and update profile for the target user who deposited
+                    const { data: targetProfile } = await supabaseClient
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', t.user_id)
+                        .single();
+
+                    if(targetProfile) {
+                        let newDep = (targetProfile.total_dep || 0) + t.amount;
+                        let newBal = (targetProfile.balance || 0) + t.amount;
+                        let l1Bonus = t.amount * 0.10;
+                        newBal += l1Bonus;
+                        let newEarn = (targetProfile.total_earn || 0) + l1Bonus;
+
+                        await supabaseClient.from('profiles').update({
+                            total_dep: newDep,
+                            balance: newBal,
+                            total_earn: newEarn
+                        }).eq('id', t.user_id);
+                    }
                 }
             }
             updateDashboard();
             alert('Transaction approved successfully for user account!');
         }
 
-        function rejectTx(index) {
+        async function rejectTx(index) {
             let t = txs[index];
             if(t.status === 'Pending') {
                 t.status = 'Rejected';
                 
+                await supabaseClient.from('transactions').update({ status: 'Rejected' }).eq('id', t.id);
+
                 if(t.type === 'Withdrawal') {
-                    let targetUser = t.phone;
-                    if(usersDB[targetUser]) {
+                    const { data: targetProfile } = await supabaseClient
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', t.user_id)
+                        .single();
+
+                    if(targetProfile) {
                         let totalDeduction = t.amount + (t.charge || (t.amount * 0.10));
-                        usersDB[targetUser].balance += totalDeduction;
-                        usersDB[targetUser].totalWith -= t.amount;
+                        let newBal = (targetProfile.balance || 0) + totalDeduction;
+                        let newWith = (targetProfile.total_with || 0) - t.amount;
+
+                        await supabaseClient.from('profiles').update({
+                            balance: newBal,
+                            total_with: newWith
+                        }).eq('id', t.user_id);
                     }
                 }
             }
@@ -957,7 +1095,7 @@ function handleLogin() {
                 if(t.status === 'Rejected') badgeColor = 'var(--danger)';
 
                 let sign = t.type.includes('Withdraw') ? '-' : '+';
-                let phoneDisplay = t.phone && t.phone !== 'System' ? `<br><span style="font-size:10px; color:var(--muted)">Phone: ${t.phone}</span>` : '';
+                let phoneDisplay = t.phone ? `<br><span style="font-size:10px; color:var(--muted)">Phone: ${t.phone}</span>` : '';
 
                 logHtml += `
                 <div style="display:flex; justify-content:space-between; align-items:center; background:#0d1424; padding:10px; margin-top:6px; border-radius:6px; border: 1px solid var(--border);">
@@ -995,14 +1133,13 @@ function handleLogin() {
         function renderMyProducts() {
             let container = document.getElementById('myProductsList');
             if(!container) return;
-            let uData = getCurrentUserData();
-            if(uData.userProducts.length === 0) {
+            if(userData.userProducts.length === 0) {
                 container.innerHTML = 'No active investments yet. Purchase a plan from Products.';
                 return;
             }
             let html = '';
             let now = Date.now();
-            uData.userProducts.forEach((p) => {
+            userData.userProducts.forEach((p) => {
                 let timeLeft = Math.max(0, p.nextPayoutTime - now);
                 let hours = Math.floor(timeLeft / 3600000);
                 let minutes = Math.floor((timeLeft % 3600000) / 60000);
@@ -1025,25 +1162,23 @@ function handleLogin() {
             container.innerHTML = html;
         }
 
-        setInterval(() => {
+        setInterval(async () => {
             let now = Date.now();
             let updated = false;
-            for(let uKey in usersDB) {
-                let uData = usersDB[uKey];
-                uData.userProducts.forEach(p => {
-                    if(now >= p.nextPayoutTime && p.currentDay <= p.maxDays) {
-                        uData.balance += p.dailyReturn;
-                        uData.totalEarn += p.dailyReturn;
-                        uData.totalEarn = Math.floor(uData.totalEarn);
-                        uData.balance = Math.floor(uData.balance);
-                        p.currentDay++;
-                        p.nextPayoutTime = now + 86400000;
-                        txs.unshift({type: `Daily Payout (Day ${p.currentDay-1})`, amount: p.dailyReturn, phone: uKey, status: 'Approved'});
-                        updated = true;
-                    }
-                });
-            }
-            if(updated) {
+            userData.userProducts.forEach(p => {
+                if(now >= p.nextPayoutTime && p.currentDay <= p.maxDays) {
+                    userData.balance += p.dailyReturn;
+                    userData.totalEarn += p.dailyReturn;
+                    userData.totalEarn = Math.floor(userData.totalEarn);
+                    userData.balance = Math.floor(userData.balance);
+                    p.currentDay++;
+                    p.nextPayoutTime = now + 86400000;
+                    txs.unshift({type: `Daily Payout (Day ${p.currentDay-1})`, amount: p.dailyReturn, phone: currentUser?.user_metadata?.phone || '', status: 'Approved'});
+                    updated = true;
+                }
+            });
+            if(updated && currentUser) {
+                await saveUserDataToSupabase();
                 updateDashboard();
             } else {
                 renderMyProducts();
@@ -1090,4 +1225,5 @@ function handleLogin() {
         draw();
     </script>
 </body>
-</html> 
+</html>
+                    
