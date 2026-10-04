@@ -552,10 +552,11 @@ localStorage.removeItem('sr_referred_by');   // <-- Clean up temporary storage h
             document.getElementById('profileDisplayName').innerText = currentUser.display_name || currentUser.identifier;
             document.getElementById('settingNameInput').value = currentUser.display_name || currentUser.identifier;
                 // Generate and set the unique referral link
-    if (currentUser && currentUser.id) {
-        const baseUrl = window.location.origin + window.location.pathname;
-        const referralLink = `${baseUrl}?ref=${currentUser.id}`;
-        
+           if (currentUser && (currentUser.id || currentUser.identifier)) {
+    const baseUrl = window.location.origin + window.location.pathname;
+    const refId = currentUser.id || currentUser.identifier;
+    const referralLink = `${baseUrl}?ref=${refId}`;
+    
         const refInput = document.getElementById('referralLinkInput');
         if (refInput) {
             refInput.value = referralLink;
