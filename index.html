@@ -1020,22 +1020,19 @@ window.finalizeDeposit = async function() {
     if(!name) { alert('Please enter full name.'); return; }
     if(!/^07\d{8}$/.test(phone)) { alert('Please enter a valid phone number starting with 07.'); return; }
     
-    // Minimum check: Must be >= 5000 unless it's a clean sweep of the exact remaining balance
-    if (isNaN(val) || (val < 5000 && val !== currentUser.balance)) { 
-        alert('Minimum withdrawal amount is UGX 5,000.'); 
-        return; 
-    }
+    // Minimum check: Must be >= 5000
+if (isNaN(val) || val < 5000) { 
+    alert('Minimum withdrawal amount is UGX 5,000.'); 
+    return; 
+}
+
 
     if(val > currentUser.balance) {
         alert('Requested withdrawal amount exceeds your available balance!');
         return;
     }
 
-    // Clean sweep rule if leaving less than 5000 or taking everything
-    if (val >= currentUser.balance || (currentUser.balance - val < 5000)) {
-        val = currentUser.balance;
-    }
-
+    
     let charge = val * 0.10;
     let exactReceive = val - charge;
 
