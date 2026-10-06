@@ -225,7 +225,7 @@
 
             <div class="grid">
                 <button class="btn" onclick="openDepositModal()">➕ Deposit / Invest</button>
-                <button class="btn" onclick="openModal('Re-invest Balance')">🔄 Re-invest</button>
+                
                 <button class="btn" onclick="openWithdrawModal()">💸 Withdraw</button>
                 <button class="btn" onclick="switchTab('myproducts')">📦 My Products</button>
                 <button class="btn" onclick="triggerCheckIn()">📅 Check-in</button>
@@ -357,7 +357,19 @@
                     <div style="font-size:13px; font-weight:bold; color:white; margin-bottom:6px;">Pending Withdrawals</div>
                     <div id="adminPendingWithdrawals" style="margin-bottom:15px; font-size:12px; color:var(--muted);">No pending withdrawals.</div>
                 </div>
-            </div>
+            <div class="card" style="margin-top: 20px; text-align: left;">
+    <div style="font-weight: bold; font-size: 14px; color: var(--primary); margin-bottom: 10px;">🔐 Reset Member Password</div>
+    <div style="font-size: 12px; color: var(--muted); margin-bottom: 10px;">
+        Enter the user's account number (identifier) and assign a new password.
+    </div>
+    
+    <input type="text" id="adminTargetUser" class="input" placeholder="User Account Number / Phone" style="width: 100%; margin-bottom: 8px; padding: 8px;" />
+    <input type="password" id="adminNewPassword" class="input" placeholder="New Password" style="width: 100%; margin-bottom: 8px; padding: 8px;" />
+    
+    <button class="btn" onclick="adminResetPassword()" style="width: 100%;">Update Password</button>
+</div>
+
+        </div>
         </div>
 
         <!-- UNIVERSAL MODAL -->
@@ -710,6 +722,49 @@ if (refInput) {
             document.getElementById('newPassInput').value = '';
             alert('Password changed successfully!');
         }
+         window.adminResetPassword = async function() {
+    const targetIdentifier = document.getElementById('adminTargetUser').value.trim();
+    const newPassword = document.getElementById('adminNewPassword').value.trim();
+
+    if (!targetIdentifier || !newPassword) {
+        alert("Please enter both the user's account number and the new password.");
+        return;
+    }
+
+    if (newPassword.length < 6) {
+        alert("Password must be at least 6 characters long.");
+        return;
+    }
+
+    try {
+        const usersRef = collection(db, "users");
+        const q = query(usersRef, where("identifier", "==", targetIdentifier));
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+            alert("User not found with that account number.");
+            return;
+        }
+
+        let userDocId = null;
+        querySnapshot.forEach((docSnap) => {
+            userDocId = docSnap.id;
+        });
+
+        let targetUserRef = doc(db, "users", userDocId);
+        await updateDoc(targetUserRef, {
+            pass: newPassword
+        });
+
+        alert(`✅ Password successfully updated for account: ${targetIdentifier}`);
+        document.getElementById('adminTargetUser').value = '';
+        document.getElementById('adminNewPassword').value = '';
+
+    } catch (err) {
+        console.error("Error resetting password:", err);
+        alert("Failed to reset password: " + err.message);
+    }
+}
 
         window.saveAdminSocialLinks = function() {
             let newWa = document.getElementById('adminWhatsappInput').value.trim();
@@ -1164,7 +1219,7 @@ if (refInput) {
             }
             document.getElementById('adminPendingWithdrawals').innerHTML = withHtml;
         }
-
+        
         window.approveTx = async function(txId) {
             let t = txs.find(item => item.id == txId);
             if(!t || t.status !== 'Pending') return;
@@ -1244,6 +1299,7 @@ if (refInput) {
             });
             document.getElementById('txLog').innerHTML = logHtml;
         }
+       
 
         window.copyRef = function() {
             navigator.clipboard.writeText(document.getElementById("refLink").value);
@@ -1265,37 +1321,65 @@ if (refInput) {
         }
 
         function renderMyProducts() {
-            let container = document.getElementById('myProductsList');
-            if(!container) return;
-            if(userProducts.length === 0) {
-                container.innerHTML = 'No active investments yet. Purchase a plan from Products.';
-                return;
-            }
-            let html = '';
-            let now = Date.now();
-            userProducts.forEach((p) => {
-                let nextPayoutTime = new Date(p.next_payout_time).getTime();
-                let timeLeft = Math.max(0, nextPayoutTime - now);
-                let hours = Math.floor(timeLeft / 3600000);
-                let minutes = Math.floor((timeLeft % 3600000) / 60000);
-                let seconds = Math.floor((timeLeft % 60000) / 1000);
+    let container = document.getElementById('myProductsList');
+    if(!container) return;
+    if(userProducts.length === 0) {
+        container.innerHTML = 'No active investments yet. Purchase a plan from Products.';
+        return;
+    }
+    let html = '';
+    let now = Date.now();
+    let updated = false;
 
-                html += `
-                <div style="background:#0d1424; padding:12px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px;">
-                    <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                        <strong style="color:white">Plan: UGX ${p.price.toLocaleString()}</strong>
-                        <span style="color:var(--success); font-weight:bold;">Day ${p.current_day} / ${p.max_days}</span>
-                    </div>
-                    <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">
-                        Daily Payout (10%): <strong style="color:white">UGX ${p.daily_return.toLocaleString()}</strong> | Total Income: <strong style="color:var(--primary)">UGX ${p.total_income.toLocaleString()}</strong>
-                    </div>
-                    <div style="font-size:11px; color:var(--warning);">
-                        Next Automated Payout in: <strong>${hours}h ${minutes}m ${seconds}s</strong>
-                    </div>
-                </div>`;
-            });
-            container.innerHTML = html;
+    userProducts.forEach((p) => {
+        let nextPayoutTime = new Date(p.next_payout_time).getTime();
+        let timeLeft = Math.max(0, nextPayoutTime - now);
+
+        // AUTO-PAYOUT CHECK: If time has elapsed and max days not reached
+        if (timeLeft === 0 && p.current_day <= (p.max_days || 180)) {
+            let payoutAmount = p.daily_return || (p.price * 0.10);
+            
+            // Credit user balance & earnings
+            currentUser.balance = (currentUser.balance || 0) + payoutAmount;
+            currentUser.earnings = (currentUser.earnings || 0) + payoutAmount;
+
+            // Advance to next day and reset 24-hour timer (24 * 60 * 60 * 1000 ms)
+            p.current_day += 1;
+            p.next_payout_time = new Date(now + 86400000).toISOString(); // or timestamp depending on how you store it
+            
+            updated = true;
+
+            // Optional: Log transaction locally or push to Firestore
+            // (Make sure to sync currentUser and userProducts to Firebase here)
         }
+
+        let hours = Math.floor(timeLeft / 3600000);
+        let minutes = Math.floor((timeLeft % 3600000) / 60000);
+        let seconds = Math.floor((timeLeft % 60000) / 1000);
+
+        html += `
+        <div style="background:#0d1424; padding:12px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                <strong style="color:white">Plan: UGX ${p.price.toLocaleString()}</strong>
+                <span style="color:var(--success); font-weight:bold;">Day ${p.current_day} / ${p.max_days || 180}</span>
+            </div>
+            <div style="font-size:11px; color:var(--muted); margin-bottom:4px;">
+                Daily Payout (10%): <strong style="color:white">UGX ${p.daily_return.toLocaleString()}</strong> | Total Income: <strong style="color:var(--primary)">UGX ${p.total_income.toLocaleString()}</strong>
+            </div>
+            <div style="font-size:11px; color:var(--warning);">
+                Next Automated Payout in: <strong>${hours}h ${minutes}m ${seconds}s</strong>
+            </div>
+        </div>`;
+    });
+
+    container.innerHTML = html;
+
+    // If a payout occurred, sync changes to Firestore and update dashboard UI balances
+    if (updated && typeof syncUserData === 'function') {
+        syncUserData();
+        if (typeof updateDashboardUI === 'function') updateDashboardUI();
+    }
+}
 
         /* Waving Text Animation Script with Dynamic Colors */
         const canvas = document.getElementById('wave-canvas');
