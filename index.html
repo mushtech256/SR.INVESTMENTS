@@ -373,7 +373,7 @@
                     <div style="background:#0d1424; padding:12px; border-radius:8px; border:1px solid var(--border); margin-bottom:15px;">
                         <div style="font-size:12px; font-weight:bold; color:var(--primary); margin-bottom:6px;">📱 Update Social Link URLs</div>
                         
-                        <label style="font-size:10px; color:var(--muted);">WhatsApp Group Link</label>
+               <label style="font-size:10px; color:var(--muted);">WhatsApp Group Link</label>
                         <input type="text" id="adminWhatsappInput" class="input" style="font-size:11px; margin:4px 0 8px 0;" placeholder="https://chat.whatsapp.com/...">
 
                         <label style="font-size:10px; color:var(--muted);">Telegram Link</label>
@@ -790,8 +790,7 @@ if (refInput) {
         alert(`✅ Password successfully updated for account: ${targetIdentifier}`);
         document.getElementById('adminTargetUser').value = '';
         document.getElementById('adminNewPassword').value = '';
-
-    } catch (err) {
+   } catch (err) {
         console.error("Error resetting password:", err);
         alert("Failed to reset password: " + err.message);
     }
@@ -978,7 +977,7 @@ window.finalizeDeposit = async function() {
     alert('Deposit submitted. Kindly wait for Admin approval.');
 }
 
-        window.openWithdrawModal = function() {
+                window.openWithdrawModal = function() {
             document.getElementById('modal-body-content').innerHTML = `
                 <h3 style="color:var(--primary); font-size:14px; margin-bottom:10px;">Withdraw Funds</h3>
                 <label style="font-size:11px; color:var(--muted);">Full Name</label>
@@ -997,9 +996,7 @@ window.finalizeDeposit = async function() {
                 <input type="number" id="w-amt" class="input" placeholder="Enter amount (UGX)" oninput="calcWithdrawCharge()">
 
                 <div style="background:#0d1424; padding:8px; border-radius:6px; margin:8px 0; font-size:11px; color:var(--muted);">
-                    Withdrawal Charge (10%): <strong id="chargeText" style="color:var(--primary)">UGX 0</strong><br>
-                    Total Deducted from Balance: <strong id="totalDedText" style="color:white">UGX 0</strong><br>
-                    Exact Amount to Receive: <strong id="exactReceiveText" style="color:var(--success)">UGX 0</strong>
+                    Withdrawal Fee (10%): <strong id="chargeText" style="color:var(--primary)">UGX 0</strong>
                 </div>
 
                 <button class="btn" style="width:100%; background:var(--success); margin-top:5px;" onclick="submitWithdraw()">Confirm Withdrawal</button>
@@ -1011,58 +1008,80 @@ window.finalizeDeposit = async function() {
         window.calcWithdrawCharge = function() {
             let val = parseFloat(document.getElementById('w-amt').value) || 0;
             let charge = val * 0.10;
-            let totalDeduction = val + charge;
-            let exactReceive = val;
             document.getElementById('chargeText').innerText = 'UGX ' + Math.floor(charge).toLocaleString();
-            document.getElementById('totalDedText').innerText = 'UGX ' + Math.floor(totalDeduction).toLocaleString();
-            document.getElementById('exactReceiveText').innerText = 'UGX ' + Math.floor(exactReceive).toLocaleString();
         }
 
-        window.submitWithdraw = async function() {
-            let name = document.getElementById('w-name').value.trim();
-            let phone = document.getElementById('w-phone').value.trim();
-            let network = document.getElementById('w-network').value;
-            let val = parseFloat(document.getElementById('w-amt').value);
+      window.submitWithdraw = async function() {
+    let name = document.getElementById('w-name').value.trim();
+    let phone = document.getElementById('w-phone').value.trim();
+    let network = document.getElementById('w-network').value;
+    let val = parseFloat(document.getElementById('w-amt').value);
 
-            if(!name) { alert('Please enter full name.'); return; }
-            if(!/^07\d{8}$/.test(phone)) { alert('Please enter a valid phone number starting with 07.'); return; }
-            if(isNaN(val) || val < 5000) { alert('Minimum withdrawal amount is UGX 5,000.'); return; }
+    if(!name) { alert('Please enter full name.'); return; }
+    if(!/^07\d{8}$/.test(phone)) { alert('Please enter a valid phone number starting with 07.'); return; }
+    
+    // Minimum check: Must be >= 5000 unless it's a clean sweep of the exact remaining balance
+    if (isNaN(val) || (val < 5000 && val !== currentUser.balance)) { 
+        alert('Minimum withdrawal amount is UGX 5,000.'); 
+        return; 
+    }
 
-            let charge = val * 0.10;
-            let totalDeduction = val + charge;
+    if(val > currentUser.balance) {
+        alert('Requested withdrawal amount exceeds your available balance!');
+        return;
+    }
 
-            if(totalDeduction > currentUser.balance) {
-                alert('Insufficient balance including the 10% withdrawal charge!');
-                return;
-            }
+    // Clean sweep rule if leaving less than 5000 or taking everything
+    if (val >= currentUser.balance || (currentUser.balance - val < 5000)) {
+        val = currentUser.balance;
+    }
 
-            currentUser.balance -= totalDeduction;
-            currentUser.total_with += val;
+    let charge = val * 0.10;
+    let exactReceive = val - charge;
 
-            let userRef = doc(db, "users", currentUser.id);
-            await updateDoc(userRef, {
-                balance: currentUser.balance,
-                total_with: currentUser.total_with
-            });
+    // 1. Immediately subtract from user balance and add to total withdrawn
+    currentUser.balance -= val;
+    currentUser.total_with = (currentUser.total_with || 0) + val;
 
-            let newTx = {
-                user_id: currentUser.id,
-                type: 'Withdrawal',
-                amount: val,
-                phone: phone,
-                name: name,
-                network: network,
-                charge: charge,
-                status: 'Pending',
-                created_at: new Date().toISOString()
-            };
+    // 2. Instantly update UI dashboard elements
+    document.getElementById('bal').innerText = 'UGX ' + Math.floor(currentUser.balance).toLocaleString();
+    document.getElementById('withCount').innerText = currentUser.total_with.toLocaleString();
 
-            await addDoc(collection(db, "transactions"), newTx);
-            await fetchUserData();
-            updateDashboard();
-            closeModal();
-            alert(`🎉 Withdrawal request submitted successfully (Pending Admin Approval).`);
-        }
+    // 3. Close modal
+    closeModal();
+
+    // 4. Push updates to Firestore (Deduct balance immediately + create Pending transaction)
+        try {
+        let docKey = currentUser.identifier || currentUser.phone || currentUser.id;
+        let userRef = doc(db, "users", docKey);
+        await updateDoc(userRef, {
+            balance: currentUser.balance,
+            total_with: currentUser.total_with
+        });
+
+        let newTx = {
+            user_id: docKey,
+            type: 'Withdrawal',
+            amount: val,
+            charge: charge,
+            exact_receive: exactReceive,
+            phone: phone,
+            name: name,
+            network: network,
+            status: 'Pending',
+            created_at: new Date().toISOString()
+        };
+
+        await addDoc(collection(db, "transactions"), newTx);
+           
+        await fetchUserData();
+        updateDashboard();
+        alert(`🎉 Withdrawal request submitted successfully! Balance deducted immediately.`);
+    } catch (err) {
+        console.error("Error saving withdrawal:", err);
+        alert("Error processing withdrawal. Please check your connection.");
+    }
+}
 
         window.submitGenericAction = async function(title) {
             let val = parseFloat(document.getElementById('amtInput').value);
@@ -1071,14 +1090,15 @@ window.finalizeDeposit = async function() {
             currentUser.balance += val;
             currentUser.total_dep += val;
 
-            let userRef = doc(db, "users", currentUser.id);
+            let docKey = currentUser.identifier || currentUser.phone || currentUser.id;
+            let userRef = doc(db, "users", docKey);
             await updateDoc(userRef, {
                 balance: currentUser.balance,
                 total_dep: currentUser.total_dep
             });
 
             let newTx = {
-                user_id: currentUser.id,
+                user_id: docKey, 
                 type: title,
                 amount: val,
                 phone: currentUser.identifier,
@@ -1304,85 +1324,95 @@ window.finalizeDeposit = async function() {
         }
         
         window.approveTx = async function(txId) {
-            let t = txs.find(item => item.id == txId);
-            if(!t || t.status !== 'Pending') return;
+    let t = txs.find(item => item.id == txId);
+    if(!t || t.status !== 'Pending') return;
 
-            let txRef = doc(db, "transactions", txId);
-            await updateDoc(txRef, { status: 'Approved' });
+    let txRef = doc(db, "transactions", txId);
+    await updateDoc(txRef, { status: 'Approved' });
 
-            if(t.type === 'Deposit') {
-                let userRef = doc(db, "users", t.user_id);
-                let userSnap = await getDoc(userRef);
-                if(userSnap.exists()) {
-                    let targetUser = userSnap.data();
-                    let l1Bonus = t.amount * 0.10;
-                    await updateDoc(userRef, {
-                        total_dep: targetUser.total_dep + t.amount,
-                        balance: targetUser.balance + t.amount + l1Bonus,
-                        total_earn: targetUser.total_earn + l1Bonus
-                    });
-                }
-            }
-
-            await fetchUserData();
-            updateDashboard();
-            alert('Transaction approved successfully!');
+    if(t.type === 'Deposit') {
+        let userRef = doc(db, "users", t.user_id);
+        let userSnap = await getDoc(userRef);
+        if(userSnap.exists()) {
+            let targetUser = userSnap.data();
+            await updateDoc(userRef, {
+                total_dep: targetUser.total_dep + t.amount,
+                balance: targetUser.balance + t.amount
+            });
         }
+    }
+    // Note: For Withdrawals, balance was already deducted on request submission, 
+    // so approving it only confirms the status change!
 
-        window.rejectTx = async function(txId) {
-            let t = txs.find(item => item.id == txId);
-            if(!t || t.status !== 'Pending') return;
+    await fetchUserData();
+    updateDashboard();
+    alert('Transaction approved successfully!');
+}
 
-            let txRef = doc(db, "transactions", txId);
-            await updateDoc(txRef, { status: 'Rejected' });
+window.cancelTx = async function(txId) {
+    let t = txs.find(item => item.id == txId);
+    if(!t || t.status !== 'Pending' || t.type !== 'Withdrawal') return;
 
-            if(t.type === 'Withdrawal') {
-                let userRef = doc(db, "users", t.user_id);
-                let userSnap = await getDoc(userRef);
-                if(userSnap.exists()) {
-                    let targetUser = userSnap.data();
-                    let totalDeduction = t.amount + (t.charge || (t.amount * 0.10));
-                    await updateDoc(userRef, {
-                        balance: targetUser.balance + totalDeduction,
-                        total_with: targetUser.total_with - t.amount
-                    });
-                }
-            }
+    if(!confirm("Are you sure you want to cancel this withdrawal? Your funds will be returned to your balance.")) return;
 
-            await fetchUserData();
-            updateDashboard();
-            alert('Transaction has been rejected.');
-        }
+    let txRef = doc(db, "transactions", txId);
+    await updateDoc(txRef, { status: 'Cancelled' });
+
+    let userRef = doc(db, "users", t.user_id);
+    let userSnap = await getDoc(userRef);
+
+    if(userSnap.exists()) {
+        let targetUser = userSnap.data();
+        await updateDoc(userRef, {
+            balance: targetUser.balance + t.amount,
+            total_with: Math.max(0, (targetUser.total_with || 0) - t.amount)
+        });
+    }
+
+    await fetchUserData();
+    updateDashboard();
+    alert('Withdrawal cancelled. Funds have been returned to your balance.');
+}
+
+
+
 
         function updateLog() {
-            let logHtml = '';
-            if(txs.length === 0) {
-                document.getElementById('txLog').innerHTML = 'No transactions yet.';
-                return;
-            }
-            txs.forEach((t) => {
-                let badgeColor = 'var(--muted)';
-                if(t.status === 'Approved') badgeColor = 'var(--success)';
-                if(t.status === 'Pending') badgeColor = 'var(--warning)';
-                if(t.status === 'Rejected') badgeColor = 'var(--danger)';
+    let logHtml = '';
+    if(txs.length === 0) {
+        document.getElementById('txLog').innerHTML = 'No transactions yet.';
+        return;
+    }
+    txs.forEach((t) => {
+        let badgeColor = 'var(--muted)';
+        if(t.status === 'Approved') badgeColor = 'var(--success)';
+        if(t.status === 'Pending') badgeColor = 'var(--warning)';
+        if(t.status === 'Rejected' || t.status === 'Cancelled') badgeColor = 'var(--danger)';
 
-                let sign = t.type.includes('Withdraw') ? '-' : '+';
-                let phoneDisplay = t.phone && t.phone !== 'System' ? `<br><span style="font-size:10px; color:var(--muted)">Phone: ${t.phone}</span>` : '';
+        let sign = t.type.includes('Withdraw') ? '-' : '+';
+        let phoneDisplay = t.phone && t.phone !== 'System' ? `<br><span style="font-size:10px; color:var(--muted)">Phone: ${t.phone}</span>` : '';
 
-                logHtml += `
-                <div style="display:flex; justify-content:space-between; align-items:center; background:#0d1424; padding:10px; margin-top:6px; border-radius:6px; border: 1px solid var(--border);">
-                    <div>
-                        <strong style="color:white">${t.type}</strong>${phoneDisplay}
-                        <div style="font-size:10px; margin-top:2px;">Status: <span style="color:${badgeColor}; font-weight:bold;">${t.status}</span></div>
-                    </div>
-                    <div style="text-align:right;">
-                        <strong style="color:${t.type.includes('Withdraw') ? '#f472b6' : '#34d399'}">${sign}${t.amount.toLocaleString()}</strong>
-                    </div>
-                </div>`;
-            });
-            document.getElementById('txLog').innerHTML = logHtml;
+        // Add a Cancel button if it's a Pending withdrawal for the current user
+        let cancelButton = '';
+        if(t.type === 'Withdrawal' && t.status === 'Pending') {
+            cancelButton = `<button class="btn" style="padding:2px 6px; font-size:9px; background:var(--danger); margin-top:4px;" onclick="cancelTx('${t.id}')">Cancel</button>`;
         }
-       
+
+        logHtml += `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#0d1424; padding:10px; margin-top:6px; border-radius:6px; border: 1px solid var(--border);">
+            <div>
+                <strong style="color:white">${t.type}</strong>${phoneDisplay}
+                <div style="font-size:10px; margin-top:2px;">Status: <span style="color:${badgeColor}; font-weight:bold;">${t.status}</span></div>
+                ${cancelButton}
+            </div>
+            <div style="text-align:right;">
+                <strong style="color:${t.type.includes('Withdraw') ? '#f472b6' : '#34d399'}">${sign}${t.amount.toLocaleString()}</strong>
+            </div>
+        </div>`;
+    });
+    document.getElementById('txLog').innerHTML = logHtml;
+}
+
 
         window.copyRef = function() {
             navigator.clipboard.writeText(document.getElementById("refLink").value);
@@ -1512,4 +1542,4 @@ window.finalizeDeposit = async function() {
 
     </script>
 </body>
-</html>
+</html
