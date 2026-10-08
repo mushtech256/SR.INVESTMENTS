@@ -581,7 +581,7 @@ localStorage.removeItem('sr_referred_by');   // <-- Clean up temporary storage h
             prodsSnap.forEach(docSnap => {
                 userProducts.push({ id: docSnap.id, ...docSnap.data() });
             });
-
+           await processDailyPayouts();
             // Fetch transactions
             txs = [];
             let txsQuery = query(collection(db, "transactions"), orderBy("created_at", "desc"));
@@ -593,6 +593,52 @@ localStorage.removeItem('sr_referred_by');   // <-- Clean up temporary storage h
                 }
             });
         }
+        async function processDailyPayouts() {
+    if (!currentUser || !userProducts || userProducts.length === 0) return;
+
+    let now = Date.now();
+    let updated = false;
+
+    for (let product of userProducts) {
+        let nextPayout = new Date(product.next_payout_time).getTime();
+        if (product.current_day <= product.max_days && now >= nextPayout) {
+            
+            currentUser.balance += product.daily_return;
+            currentUser.total_earn = (currentUser.total_earn || 0) + product.daily_return;
+            
+            product.current_day += 1;
+            product.next_payout_time = new Date(now + 86400000).toISOString();
+
+            let prodRef = doc(db, "user_products", product.id);
+            await updateDoc(prodRef, {
+                current_day: product.current_day,
+                next_payout_time: product.next_payout_time
+            });
+
+            let newTx = {
+                user_id: currentUser.id,
+                type: `Daily ROI Payout (Day ${product.current_day - 1})`,
+                amount: product.daily_return,
+                phone: currentUser.identifier,
+                status: 'Approved',
+                created_at: new Date().toISOString()
+            };
+            await addDoc(collection(db, "transactions"), newTx);
+            updated = true;
+        }
+    }
+
+    if (updated) {
+        let userRef = doc(db, "users", currentUser.id);
+        await updateDoc(userRef, {
+            balance: currentUser.balance,
+            total_earn: currentUser.total_earn
+        });
+
+        updateDashboard();
+    }
+}
+
               async function getReferralCount(userPhone) {
     try {
         const usersRef = collection(db, "users");
@@ -1281,46 +1327,82 @@ if (isNaN(val) || val < 5000) {
             }
         }
 
-        function renderAdminControlLists() {
-            let pendingDeps = txs.filter(t => t.type === 'Deposit' && t.status === 'Pending');
-            let pendingWiths = txs.filter(t => t.type === 'Withdrawal' && t.status === 'Pending');
+          function renderAdminControlLists() {
+    let pendingDeps = txs.filter(t => t.type === 'Deposit' && t.status === 'Pending');
+    let pendingWiths = txs.filter(t => t.type === 'Withdrawal' && t.status === 'Pending');
 
-            let depHtml = '';
-            if(pendingDeps.length === 0) {
-                depHtml = 'No pending deposits.';
-            } else {
-                pendingDeps.forEach((t) => {
-                    depHtml += `
-                    <div style="background:#0d1424; padding:8px; border-radius:6px; margin-top:4px; display:flex; justify-content:space-between; align-items:center;">
-                        <div>Phone: <strong style="color:white">${t.phone}</strong> | Amt: <strong style="color:var(--success)">UGX ${t.amount.toLocaleString()}</strong></div>
-                        <div style="display:flex; gap:4px;">
-                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--success);" onclick="approveTx('${t.id}')">Approve</button>
-                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--danger);" onclick="rejectTx('${t.id}')">Reject</button>
-                        </div>
-                    </div>`;
-                });
-            }
-            document.getElementById('adminPendingDeposits').innerHTML = depHtml;
+    let depHtml = '';
+    if(pendingDeps.length === 0) {
+        depHtml = 'No pending deposits.';
+    } else {
+        pendingDeps.forEach((t) => {
+            depHtml += `
+            <div style="background:#0d1424; padding:10px; border-radius:6px; margin-top:6px; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border);">
+                <div>
+                    <div style="font-size:11px; color:var(--muted);">PHONE: <strong style="color:white;">${t.phone}</strong></div>
+                    <div style="font-size:11px; color:var(--muted); margin-top:3px;">AMOUNT: <strong style="color:var(--success);">UGX ${t.amount.toLocaleString()}</strong></div>
+                </div>
+                <div style="display:flex; gap:4px;">
+                    <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--success);" onclick="approveTx('${t.id}')">Approve</button>
+                    <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--danger);" onclick="rejectTx('${t.id}')">Reject</button>
+                </div>
+            </div>`;
+        });
+    }
+    document.getElementById('adminPendingDeposits').innerHTML = depHtml;
 
-            let withHtml = '';
-            if(pendingWiths.length === 0) {
-                withHtml = 'No pending withdrawals.';
-            } else {
-                pendingWiths.forEach((t) => {
-                    withHtml += `
-                    <div style="background:#0d1424; padding:8px; border-radius:6px; margin-top:4px; display:flex; justify-content:space-between; align-items:center;">
-                        <div>Name: <strong style="color:white">${t.name}</strong><br>Network: ${t.network} | Phone: ${t.phone}<br>Send Amount: <strong style="color:var(--success)">UGX ${t.amount.toLocaleString()}</strong></div>
-                        <div style="display:flex; gap:4px;">
-                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--success);" onclick="approveTx('${t.id}')">Approve</button>
-                            <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--danger);" onclick="rejectTx('${t.id}')">Reject</button>
-                        </div>
-                    </div>`;
-                });
-            }
-            document.getElementById('adminPendingWithdrawals').innerHTML = withHtml;
-        }
+    let withHtml = '';
+    if(pendingWiths.length === 0) {
+        withHtml = 'No pending withdrawals.';
+    } else {
+        pendingWiths.forEach((t) => {
+            withHtml += `
+            <div style="background:#0d1424; padding:10px; border-radius:6px; margin-top:6px; display:flex; justify-content:space-between; align-items:center; border:1px solid var(--border);">
+                <div>
+                    <div style="font-size:11px; color:var(--muted);">NAME: <strong style="color:white;">${t.name || 'N/A'}</strong></div>
+                    <div style="font-size:11px; color:var(--muted); margin-top:3px;">NETWORK: <strong style="color:white;">${t.network || 'N/A'}</strong></div>
+                    <div style="font-size:11px; color:var(--muted); margin-top:3px;">PHONE: <strong style="color:white;">${t.phone}</strong></div>
+                    <div style="font-size:11px; color:var(--muted); margin-top:3px;">AMOUNT: <strong style="color:var(--success);">UGX ${t.amount.toLocaleString()}</strong></div>
+                </div>
+                <div style="display:flex; gap:4px;">
+                    <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--success);" onclick="approveTx('${t.id}')">Approve</button>
+                    <button class="btn" style="padding:4px 8px; font-size:10px; background:var(--danger);" onclick="rejectTx('${t.id}')">Reject</button>
+                </div>
+            </div>`;
+        });
+    }
+    document.getElementById('adminPendingWithdrawals').innerHTML = withHtml;
+}
+      
         
-        window.approveTx = async function(txId) {
+window.rejectTx = async function(txId) {
+    let t = txs.find(item => item.id == txId);
+    if(!t || t.status !== 'Pending') return;
+
+    if(!confirm(`Are you sure you want to reject this ${t.type.toLowerCase()}?`)) return;
+
+    let txRef = doc(db, "transactions", txId);
+    await updateDoc(txRef, { status: 'Rejected' });
+
+    // If it's a rejected withdrawal, return the funds back to the user's balance
+    if(t.type === 'Withdrawal') {
+        let userRef = doc(db, "users", t.user_id);
+        let userSnap = await getDoc(userRef);
+
+        if(userSnap.exists()) {
+            let targetUser = userSnap.data();
+            await updateDoc(userRef, {
+                balance: targetUser.balance + t.amount,
+                total_with: Math.max(0, (targetUser.total_with || 0) - t.amount)
+            });
+        }
+    }
+
+    await fetchUserData();
+    updateDashboard();
+    alert('Transaction rejected successfully.');
+}
+window.approveTx = async function(txId) {
     let t = txs.find(item => item.id == txId);
     if(!t || t.status !== 'Pending') return;
 
@@ -1333,12 +1415,12 @@ if (isNaN(val) || val < 5000) {
         if(userSnap.exists()) {
             let targetUser = userSnap.data();
             await updateDoc(userRef, {
-                total_dep: targetUser.total_dep + t.amount,
-                balance: targetUser.balance + t.amount
+                total_dep: (targetUser.total_dep || 0) + t.amount,
+                balance: (targetUser.balance || 0) + t.amount
             });
         }
     }
-    // Note: For Withdrawals, balance was already deducted on request submission, 
+    // Note: For Withdrawals, balance was already deducted on request submission,
     // so approving it only confirms the status change!
 
     await fetchUserData();
@@ -1346,30 +1428,34 @@ if (isNaN(val) || val < 5000) {
     alert('Transaction approved successfully!');
 }
 
-window.cancelTx = async function(txId) {
+window.rejectTx = async function(txId) {
     let t = txs.find(item => item.id == txId);
-    if(!t || t.status !== 'Pending' || t.type !== 'Withdrawal') return;
+    if(!t || t.status !== 'Pending') return;
 
-    if(!confirm("Are you sure you want to cancel this withdrawal? Your funds will be returned to your balance.")) return;
+    if(!confirm(`Are you sure you want to reject this ${t.type.toLowerCase()}?`)) return;
 
     let txRef = doc(db, "transactions", txId);
-    await updateDoc(txRef, { status: 'Cancelled' });
+    await updateDoc(txRef, { status: 'Rejected' });
 
-    let userRef = doc(db, "users", t.user_id);
-    let userSnap = await getDoc(userRef);
+    // If it's a rejected withdrawal, return the funds back to the user's balance
+    if(t.type === 'Withdrawal') {
+        let userRef = doc(db, "users", t.user_id);
+        let userSnap = await getDoc(userRef);
 
-    if(userSnap.exists()) {
-        let targetUser = userSnap.data();
-        await updateDoc(userRef, {
-            balance: targetUser.balance + t.amount,
-            total_with: Math.max(0, (targetUser.total_with || 0) - t.amount)
-        });
+        if(userSnap.exists()) {
+            let targetUser = userSnap.data();
+            await updateDoc(userRef, {
+                balance: (targetUser.balance || 0) + t.amount,
+                total_with: Math.max(0, (targetUser.total_with || 0) - t.amount)
+            });
+        }
     }
 
     await fetchUserData();
     updateDashboard();
-    alert('Withdrawal cancelled. Funds have been returned to your balance.');
+    alert('Transaction rejected successfully. Funds have been handled accordingly.');
 }
+
 
 
 
